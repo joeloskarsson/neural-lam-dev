@@ -5,9 +5,8 @@ import torch
 from .. import utils
 from ..config import NeuralLAMConfig
 from ..datastore import BaseDatastore
-from ..interaction_net import InteractionNet
+from ..interaction_net import InteractionNet, PropagationNet
 from .ar_model import ARModel
-
 
 class BaseGraphModel(ARModel):
     """
@@ -53,8 +52,9 @@ class BaseGraphModel(ARModel):
         self.m2g_embedder = utils.make_mlp([m2g_dim] + self.mlp_blueprint_end)
 
         # GNNs
+        gnn_class = PropagationNet if args.vertical_propnets else InteractionNet
         # encoder
-        self.g2m_gnn = InteractionNet(
+        self.g2m_gnn = gnn_class(
             self.g2m_edge_index,
             args.hidden_dim,
             hidden_layers=args.hidden_layers,
@@ -65,7 +65,7 @@ class BaseGraphModel(ARModel):
         )
 
         # decoder
-        self.m2g_gnn = InteractionNet(
+        self.m2g_gnn = gnn_class(
             self.m2g_edge_index,
             args.hidden_dim,
             hidden_layers=args.hidden_layers,

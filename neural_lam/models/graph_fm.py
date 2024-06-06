@@ -4,15 +4,14 @@ from torch import nn
 # Local
 from ..config import NeuralLAMConfig
 from ..datastore import BaseDatastore
-from ..interaction_net import InteractionNet
+from ..interaction_net import InteractionNet, PropagationNet
 from .base_hi_graph_model import BaseHiGraphModel
 
-
-class HiLAM(BaseHiGraphModel):
+class GraphFM(BaseHiGraphModel):
     """
-    Hierarchical graph model with message passing that goes sequentially down
+    Hierarchical Graph-based Forecasting Model
+    with message passing that goes sequentially down
     and up the hierarchy during processing.
-    The Hi-LAM model from Oskarsson et al. (2023)
     """
 
     def __init__(self, args, config: NeuralLAMConfig, datastore: BaseDatastore):
@@ -53,9 +52,10 @@ class HiLAM(BaseHiGraphModel):
         """
         Make GNNs for processing steps up through the hierarchy.
         """
+        gnn_class = PropagationNet if args.vertical_propnets else InteractionNet
         return nn.ModuleList(
             [
-                InteractionNet(
+                gnn_class(
                     edge_index,
                     args.hidden_dim,
                     hidden_layers=args.hidden_layers,

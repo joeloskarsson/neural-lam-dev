@@ -5,7 +5,9 @@ import warnings
 
 # Third-party
 import pytorch_lightning as pl
+import torch_geometric as pyg
 import torch
+from torch import nn
 from pytorch_lightning.loggers import MLFlowLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from torch import nn
@@ -13,7 +15,7 @@ from tueplots import bundles, figsizes
 
 # Local
 from .custom_loggers import CustomMLFlowLogger
-
+from ..interaction_net import InteractionNet
 
 class BufferList(nn.Module):
     """
@@ -343,3 +345,36 @@ def inverse_sigmoid(x):
     """
     x_clamped = torch.clamp(x, min=1e-6, max=1 - 1e-6)
     return torch.log(x_clamped / (1 - x_clamped))
+
+
+class IdentityModule(nn.Module):
+    """
+    A identity operator that can return multiple inputs
+    """
+
+    def forward(self, *args):
+        """Return input args"""
+        return args
+
+
+def make_gnn_seq(edge_index, num_gnn_layers, hidden_layers, hidden_dim):
+    """
+    Make a sequential GNN module propagating both node and edge representations
+    """
+    if num_gnn_layers == 0:
+        # If no layers, return identity
+        return IdentityModule()
+    return pyg.nn.Sequential(
+        "mesh_rep, edge_rep",
+        [
+            (
+                InteractionNet(
+                    edge_index,
+                    hidden_dim,
+                    hidden_layers=hidden_layers,
+                ),
+                "mesh_rep, mesh_rep, edge_rep -> mesh_rep, edge_rep",
+            )
+            for _ in range(num_gnn_layers)
+        ],
+    )
