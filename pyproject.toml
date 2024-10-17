@@ -16,12 +16,10 @@ dependencies = [
     "scipy>=1.10.0",
     "pytorch-lightning>=2.0.3",
     "shapely>=2.0.1",
-    "networkx>=3.0",
     "Cartopy>=0.22.0",
     "pyproj>=3.4.1",
     "tueplots>=0.0.8",
     "matplotlib>=3.7.0",
-    "plotly>=5.15.0",
     "torch>=2.3.0",
     "torch-geometric==2.3.1",
     "weather-model-graphs>=0.2.0"
@@ -33,6 +31,11 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=8.3.2",
     "pooch>=1.8.2",
+]
+graph = [
+    "networkx>=3.0",
+    "plotly>=5.15.0",
+    "graphcast @ https://github.com/deepmind/graphcast/archive/master.zip"
 ]
 [tool.setuptools]
 py-modules = ["neural_lam"]
