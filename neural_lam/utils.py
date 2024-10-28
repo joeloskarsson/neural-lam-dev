@@ -46,16 +46,22 @@ def load_static_data(dataset_name, device="cpu"):
         )
 
     # Load border mask, 1. if node is part of border, else 0.
-    border_mask_np = np.load(os.path.join(static_dir_path, "border_mask.npy"))
-    border_mask = (
-        torch.tensor(border_mask_np, dtype=torch.float32, device=device)
+    boundary_mask_np = np.load(os.path.join(static_dir_path, "border_mask.npy"))
+    boundary_mask = (
+        torch.tensor(boundary_mask_np, dtype=torch.float32, device=device)
         .flatten(0, 1)
-        .unsqueeze(1)
-    )  # (N_grid, 1)
+        .to(torch.bool)
+    )  # (N_grid,)
+    interior_mask = torch.logical_not(boundary_mask)
 
-    grid_static_features = loads_file(
+    full_grid_static_features = loads_file(
         "grid_features.pt"
-    )  # (N_grid, d_grid_static)
+    )  # (N_full_grid, d_grid_static)
+
+    grid_static_features = full_grid_static_features[interior_mask]
+    # (num_grid_nodes, d_grid_static)
+    boundary_static_features = full_grid_static_features[boundary_mask]
+    # (num_boundary_nodes, d_grid_static)
 
     # Load step diff stats
     step_diff_mean = loads_file("diff_mean.pt")  # (d_f,)
@@ -73,8 +79,10 @@ def load_static_data(dataset_name, device="cpu"):
     )  # (d_f,)
 
     return {
-        "border_mask": border_mask,
+        "boundary_mask": boundary_mask,
+        "interior_mask": interior_mask,
         "grid_static_features": grid_static_features,
+        "boundary_static_features": boundary_static_features,
         "step_diff_mean": step_diff_mean,
         "step_diff_std": step_diff_std,
         "data_mean": data_mean,

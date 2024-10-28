@@ -62,9 +62,48 @@ def plot_error_map(errors, data_config, title=None, step_length=3):
     return fig
 
 
+def plot_on_axis(
+    ax,
+    data,
+    data_config,
+    obs_mask=None,
+    vmin=None,
+    vmax=None,
+    ax_title=None,
+    cmap="plasma",
+):
+    """
+    Plot weather state on given axis
+    """
+    # Set up masking of border region
+    if obs_mask is None:
+        pixel_alpha = 1
+    else:
+        mask_reshaped = obs_mask.reshape(*data_config.grid_shape_state)
+        pixel_alpha = (
+            mask_reshaped.clamp(0.7, 1).cpu().numpy()
+        )  # Faded border region
+
+    ax.set_global()
+    ax.coastlines()  # Add coastline outlines
+    data_grid = data.reshape(*data_config.grid_shape_state).cpu().numpy().T
+    im = ax.imshow(
+        data_grid,
+        origin="lower",
+        alpha=pixel_alpha,
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )  # TODO Do we not need extent and transform arguments here?
+
+    if ax_title:
+        ax.set_title(ax_title, size=15)
+    return im
+
+
 @matplotlib.rc_context(utils.fractional_plot_bundle(1))
 def plot_prediction(
-    pred, target, obs_mask, data_config, title=None, vrange=None
+    pred, target, data_config, obs_mask=None, title=None, vrange=None
 ):
     """
     Plot example prediction and grond truth.
@@ -77,12 +116,6 @@ def plot_prediction(
     else:
         vmin, vmax = vrange
 
-    # Set up masking of border region
-    mask_reshaped = obs_mask.reshape(*data_config.grid_shape_state)
-    pixel_alpha = (
-        mask_reshaped.clamp(0.7, 1).cpu().numpy()
-    )  # Faded border region
-
     fig, axes = plt.subplots(
         1,
         2,
@@ -92,16 +125,7 @@ def plot_prediction(
 
     # Plot pred and target
     for ax, data in zip(axes, (target, pred)):
-        ax.coastlines()  # Add coastline outlines
-        data_grid = data.reshape(*data_config.grid_shape_state).cpu().numpy()
-        im = ax.imshow(
-            data_grid,
-            origin="lower",
-            alpha=pixel_alpha,
-            vmin=vmin,
-            vmax=vmax,
-            cmap="plasma",
-        )
+        im = plot_on_axis(ax, data, data_config, obs_mask, vmin, vmax)
 
     # Ticks and labels
     axes[0].set_title("Ground Truth", size=15)
@@ -116,7 +140,9 @@ def plot_prediction(
 
 
 @matplotlib.rc_context(utils.fractional_plot_bundle(1))
-def plot_spatial_error(error, obs_mask, data_config, title=None, vrange=None):
+def plot_spatial_error(
+    error, data_config, obs_mask=None, title=None, vrange=None
+):
     """
     Plot errors over spatial map
     Error and obs_mask has shape (N_grid,)
@@ -128,28 +154,12 @@ def plot_spatial_error(error, obs_mask, data_config, title=None, vrange=None):
     else:
         vmin, vmax = vrange
 
-    # Set up masking of border region
-    mask_reshaped = obs_mask.reshape(*data_config.grid_shape_state)
-    pixel_alpha = (
-        mask_reshaped.clamp(0.7, 1).cpu().numpy()
-    )  # Faded border region
-
     fig, ax = plt.subplots(
         figsize=(5, 4.8),
         subplot_kw={"projection": data_config.coords_projection},
     )
 
-    ax.coastlines()  # Add coastline outlines
-    error_grid = error.reshape(*data_config.grid_shape_state).cpu().numpy()
-
-    im = ax.imshow(
-        error_grid,
-        origin="lower",
-        alpha=pixel_alpha,
-        vmin=vmin,
-        vmax=vmax,
-        cmap="OrRd",
-    )
+    im = plot_on_axis(ax, error, data_config, obs_mask, vmin, vmax, cmap="OrRd")
 
     # Ticks and labels
     cbar = fig.colorbar(im, aspect=30)
