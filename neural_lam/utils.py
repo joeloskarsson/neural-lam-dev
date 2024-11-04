@@ -154,7 +154,7 @@ def load_graph(graph_name, device="cpu"):
 
     # Load static node features
     mesh_static_features = loads_file(
-        "mesh_features.pt"
+        "m2m_node_features.pt"
     )  # List of (N_mesh[l], d_mesh_static)
 
     # Some checks for consistency
@@ -281,3 +281,19 @@ def init_wandb_metrics(wandb_logger, val_steps):
     experiment.define_metric("val_mean_loss", summary="min")
     for step in val_steps:
         experiment.define_metric(f"val_loss_unroll{step}", summary="min")
+
+
+def get_reordered_grid_pos(dataset_name, device="cpu"):
+    """
+    Interior nodes first, then boundary
+    """
+    static_data = load_static_data(dataset_name)
+
+    return torch.cat(
+        (
+            static_data["grid_static_features"][:, :2],
+            static_data["boundary_static_features"][:, :2],
+        ),
+        dim=0,
+    )
+    # (num_total_grid_nodes, 2)

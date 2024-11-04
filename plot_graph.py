@@ -58,12 +58,8 @@ def main():
     )
     mesh_static_features = graph_ldict["mesh_static_features"]
 
-    grid_static_features = utils.load_static_data(config_loader.dataset.name)[
-        "grid_static_features"
-    ]
-
     # Extract values needed, turn to numpy
-    grid_pos = grid_static_features[:, :2].numpy()
+    grid_pos = utils.get_reordered_grid_pos(config_loader.dataset.name).numpy()
     # Add in z-dimension
     z_grid = GRID_HEIGHT * np.ones((grid_pos.shape[0],))
     grid_pos = np.concatenate(
