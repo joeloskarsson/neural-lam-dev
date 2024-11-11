@@ -8,7 +8,7 @@ import pytest
 
 # First-party
 from neural_lam.config import Config
-from neural_lam.create_mesh import main as create_mesh
+from neural_lam.build_graph import main as build_graph
 from neural_lam.train_model import main as train_model
 from neural_lam.utils import load_static_data
 from neural_lam.weather_dataset import WeatherDataset
@@ -66,14 +66,15 @@ def test_load_reduced_meps_dataset(meps_example_reduced_filepath):
     n_state_features = len(var_names)
     n_prediction_timesteps = dataset.sample_length - n_input_steps
 
-    nx, ny = config.values["grid_shape_state"]
-    n_grid = nx * ny
+    static_data = load_static_data(dataset_name)
+    n_grid = static_data["interior_mask"].sum().item()
+    n_boundary = static_data["boundary_mask"].sum().item()
 
     # check that the dataset is not empty
     assert len(dataset) > 0
 
     # get the first item
-    init_states, target_states, forcing = dataset[0]
+    init_states, target_states, forcing, boundary_forcing = dataset[0]
 
     # check that the shapes of the tensors are correct
     assert init_states.shape == (n_input_steps, n_grid, n_state_features)
@@ -86,6 +87,11 @@ def test_load_reduced_meps_dataset(meps_example_reduced_filepath):
         n_prediction_timesteps,
         n_grid,
         n_forcing_features,
+    )
+    assert boundary_forcing.shape == (
+        n_prediction_timesteps,
+        n_boundary,
+        2 * n_grid + n_forcing_features, # TODO Adjust dimensionality
     )
 
     static_data = load_static_data(dataset_name=dataset_name)
@@ -117,12 +123,14 @@ def test_load_reduced_meps_dataset(meps_example_reduced_filepath):
 
 def test_create_graph_reduced_meps_dataset():
     args = [
-        "--graph=hierarchical",
-        "--hierarchical",
+        "--output_dir=graphs/reduced_meps_hierarchical",
+        "--archetype=hierarchical",
         "--data_config=data/meps_example_reduced/data_config.yaml",
-        "--levels=2",
+        "--max_num_levels=2",
+        "--mesh_node_distance=0.05",
+        # Distance for normalized data, might need adjustment
     ]
-    create_mesh(args)
+    build_graph(args)
 
 
 def test_train_model_reduced_meps_dataset():
@@ -131,7 +139,7 @@ def test_train_model_reduced_meps_dataset():
         "--data_config=data/meps_example_reduced/data_config.yaml",
         "--n_workers=4",
         "--epochs=1",
-        "--graph=hierarchical",
+        "--graph=reduced_meps_hierarchical",
         "--hidden_dim=16",
         "--hidden_layers=1",
         "--processor_layers=1",
