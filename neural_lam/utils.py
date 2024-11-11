@@ -287,7 +287,7 @@ def get_reordered_grid_pos(dataset_name, device="cpu"):
     """
     Interior nodes first, then boundary
     """
-    static_data = load_static_data(dataset_name)
+    static_data = load_static_data(dataset_name, device=device)
 
     return torch.cat(
         (
