@@ -17,8 +17,6 @@ class BaseGraphModel(ARModel):
         super().__init__(args)
 
         # Load graph with static features
-        # NOTE: (IMPORTANT!) mesh nodes MUST have the first
-        # num_mesh_nodes indices,
         self.hierarchical, graph_ldict = utils.load_graph(args.graph)
         for name, attr_value in graph_ldict.items():
             # Make BufferLists module members and register tensors as buffers
