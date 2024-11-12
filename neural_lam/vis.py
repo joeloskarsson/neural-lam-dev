@@ -71,6 +71,7 @@ def plot_on_axis(
     vmax=None,
     ax_title=None,
     cmap="plasma",
+    grid_limits=None
 ):
     """
     Plot weather state on given axis
@@ -84,9 +85,8 @@ def plot_on_axis(
             mask_reshaped.clamp(0.7, 1).cpu().numpy()
         )  # Faded border region
 
-    ax.set_global()
     ax.coastlines()  # Add coastline outlines
-    data_grid = data.reshape(*data_config.grid_shape_state).cpu().numpy().T
+    data_grid = data.reshape(*data_config.grid_shape_state).cpu().numpy()
     im = ax.imshow(
         data_grid,
         origin="lower",
@@ -94,7 +94,8 @@ def plot_on_axis(
         vmin=vmin,
         vmax=vmax,
         cmap=cmap,
-    )  # TODO Do we not need extent and transform arguments here?
+        extent=grid_limits
+    )
 
     if ax_title:
         ax.set_title(ax_title, size=15)
@@ -103,7 +104,7 @@ def plot_on_axis(
 
 @matplotlib.rc_context(utils.fractional_plot_bundle(1))
 def plot_prediction(
-    pred, target, data_config, obs_mask=None, title=None, vrange=None
+    pred, target, data_config, obs_mask=None, title=None, vrange=None, grid_limits=None
 ):
     """
     Plot example prediction and grond truth.
@@ -125,7 +126,7 @@ def plot_prediction(
 
     # Plot pred and target
     for ax, data in zip(axes, (target, pred)):
-        im = plot_on_axis(ax, data, data_config, obs_mask, vmin, vmax)
+        im = plot_on_axis(ax, data, data_config, obs_mask, vmin, vmax, grid_limits=grid_limits)
 
     # Ticks and labels
     axes[0].set_title("Ground Truth", size=15)
@@ -141,7 +142,7 @@ def plot_prediction(
 
 @matplotlib.rc_context(utils.fractional_plot_bundle(1))
 def plot_spatial_error(
-    error, data_config, obs_mask=None, title=None, vrange=None
+    error, data_config, obs_mask=None, title=None, vrange=None, grid_limits=None
 ):
     """
     Plot errors over spatial map
@@ -159,7 +160,7 @@ def plot_spatial_error(
         subplot_kw={"projection": data_config.coords_projection},
     )
 
-    im = plot_on_axis(ax, error, data_config, obs_mask, vmin, vmax, cmap="OrRd")
+    im = plot_on_axis(ax, error, data_config, obs_mask, vmin, vmax, cmap="OrRd", grid_limits=grid_limits)
 
     # Ticks and labels
     cbar = fig.colorbar(im, aspect=30)

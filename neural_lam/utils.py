@@ -78,6 +78,15 @@ def load_static_data(dataset_name, device="cpu"):
         device=device,
     )  # (d_f,)
 
+    raw_coords = np.load(os.path.join(static_dir_path, "nwp_xy.npy"))
+    interior_coords = raw_coords.reshape(2, -1)[:,interior_mask.numpy()]
+    grid_limits = [
+        interior_coords[0].min(),
+        interior_coords[0].max(),
+        interior_coords[1].min(),
+        interior_coords[1].max(),
+    ]
+
     return {
         "boundary_mask": boundary_mask,
         "interior_mask": interior_mask,
@@ -88,6 +97,7 @@ def load_static_data(dataset_name, device="cpu"):
         "data_mean": data_mean,
         "data_std": data_std,
         "param_weights": param_weights,
+        "grid_limits": grid_limits,
     }
 
 

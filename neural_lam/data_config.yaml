@@ -55,7 +55,7 @@ dataset:
     - z_isobaricInhPa_1000_instant
     - z_isobaricInhPa_500_instant
   num_forcing_features: 16
-grid_shape_state: [268, 238]
+grid_shape_state: [248, 218]
 projection:
   class: LambertConformal
   kwargs:

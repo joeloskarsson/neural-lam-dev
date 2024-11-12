@@ -391,6 +391,7 @@ class ARModel(pl.LightningModule):
                         title=f"{var_name} ({var_unit}), "
                         f"t={t_i} ({self.step_length * t_i} h)",
                         vrange=var_vrange,
+                        grid_limits=self.grid_limits
                     )
                     for var_i, (var_name, var_unit, var_vrange) in enumerate(
                         zip(
@@ -442,7 +443,8 @@ class ARModel(pl.LightningModule):
         """
         log_dict = {}
         metric_fig = vis.plot_error_map(
-            metric_tensor, self.config_loader, step_length=self.step_length
+            metric_tensor, self.config_loader, step_length=self.step_length,
+            grid_limits=self.grid_limits
         )
         full_log_name = f"{prefix}_{metric_name}"
         log_dict[full_log_name] = wandb.Image(metric_fig)
@@ -532,6 +534,8 @@ class ARModel(pl.LightningModule):
                     loss_map,
                     self.config_loader,
                     title=f"Test loss, t={t_i} ({self.step_length * t_i} h)",
+
+            grid_limits=self.grid_limits
                 )
                 for t_i, loss_map in zip(
                     self.args.val_steps_to_log, mean_spatial_loss
@@ -544,7 +548,9 @@ class ARModel(pl.LightningModule):
 
             # also make without title and save as pdf
             pdf_loss_map_figs = [
-                vis.plot_spatial_error(loss_map, self.config_loader)
+                vis.plot_spatial_error(loss_map, self.config_loader,
+                    grid_limits=self.grid_limits
+                    )
                 for loss_map in mean_spatial_loss
             ]
             pdf_loss_maps_dir = os.path.join(wandb.run.dir, "spatial_loss_maps")
