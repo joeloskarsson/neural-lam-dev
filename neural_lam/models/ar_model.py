@@ -31,10 +31,15 @@ class ARModel(pl.LightningModule):
         static_data_dict = utils.load_static_data(
             self.config_loader.dataset.name
         )
-        for static_data_name, static_data_tensor in static_data_dict.items():
-            self.register_buffer(
-                static_data_name, static_data_tensor, persistent=False
-            )
+
+        for static_data_name, static_data in static_data_dict.items():
+            if isinstance(static_data, torch.Tensor):
+                self.register_buffer(
+                    static_data_name, static_data, persistent=False
+                )
+            else:
+                # Non-tensor static can not and should not be buffers
+                setattr(self, static_data_name, static_data)
 
         # Double grid output dim. to also output std.-dev.
         self.output_std = bool(args.output_std)
@@ -391,7 +396,7 @@ class ARModel(pl.LightningModule):
                         title=f"{var_name} ({var_unit}), "
                         f"t={t_i} ({self.step_length * t_i} h)",
                         vrange=var_vrange,
-                        grid_limits=self.grid_limits
+                        grid_limits=self.grid_limits,
                     )
                     for var_i, (var_name, var_unit, var_vrange) in enumerate(
                         zip(
@@ -443,8 +448,9 @@ class ARModel(pl.LightningModule):
         """
         log_dict = {}
         metric_fig = vis.plot_error_map(
-            metric_tensor, self.config_loader, step_length=self.step_length,
-            grid_limits=self.grid_limits
+            metric_tensor,
+            self.config_loader,
+            step_length=self.step_length,
         )
         full_log_name = f"{prefix}_{metric_name}"
         log_dict[full_log_name] = wandb.Image(metric_fig)
@@ -534,8 +540,7 @@ class ARModel(pl.LightningModule):
                     loss_map,
                     self.config_loader,
                     title=f"Test loss, t={t_i} ({self.step_length * t_i} h)",
-
-            grid_limits=self.grid_limits
+                    grid_limits=self.grid_limits,
                 )
                 for t_i, loss_map in zip(
                     self.args.val_steps_to_log, mean_spatial_loss
@@ -548,9 +553,9 @@ class ARModel(pl.LightningModule):
 
             # also make without title and save as pdf
             pdf_loss_map_figs = [
-                vis.plot_spatial_error(loss_map, self.config_loader,
-                    grid_limits=self.grid_limits
-                    )
+                vis.plot_spatial_error(
+                    loss_map, self.config_loader, grid_limits=self.grid_limits
+                )
                 for loss_map in mean_spatial_loss
             ]
             pdf_loss_maps_dir = os.path.join(wandb.run.dir, "spatial_loss_maps")

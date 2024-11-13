@@ -5,15 +5,14 @@ from pathlib import Path
 # Third-party
 import pooch
 import pytest
-import matplotlib.pyplot as plt
 
 # First-party
 from neural_lam.build_graph import main as build_graph
 from neural_lam.config import Config
 from neural_lam.train_model import main as train_model
 from neural_lam.utils import load_static_data
-from neural_lam.weather_dataset import WeatherDataset
 from neural_lam.vis import plot_prediction
+from neural_lam.weather_dataset import WeatherDataset
 
 # Disable weights and biases to avoid unnecessary logging
 # and to avoid having to deal with authentication
@@ -108,6 +107,7 @@ def test_load_reduced_meps_dataset(meps_example_reduced_filepath):
         "data_mean",
         "data_std",
         "param_weights",
+        "grid_limits",
     }
 
     # check the sizes of the props
@@ -124,6 +124,7 @@ def test_load_reduced_meps_dataset(meps_example_reduced_filepath):
     assert static_data["data_mean"].shape == (n_state_features,)
     assert static_data["data_std"].shape == (n_state_features,)
     assert static_data["param_weights"].shape == (n_state_features,)
+    assert len(static_data["grid_limits"]) == 4
 
     assert set(static_data.keys()) == required_props
 
@@ -166,4 +167,9 @@ def test_vis_reduced_meps_dataset(meps_example_reduced_filepath):
     static_data = load_static_data(dataset_name)
     geopotential = static_data["grid_static_features"][..., 2]
 
-    plot_prediction(geopotential, geopotential, config, grid_limits=static_data["grid_limits"])
+    plot_prediction(
+        geopotential,
+        geopotential,
+        config,
+        grid_limits=static_data["grid_limits"],
+    )

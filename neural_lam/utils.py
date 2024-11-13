@@ -79,7 +79,7 @@ def load_static_data(dataset_name, device="cpu"):
     )  # (d_f,)
 
     raw_coords = np.load(os.path.join(static_dir_path, "nwp_xy.npy"))
-    interior_coords = raw_coords.reshape(2, -1)[:,interior_mask.numpy()]
+    interior_coords = raw_coords.reshape(2, -1)[:, interior_mask.numpy()]
     grid_limits = [
         interior_coords[0].min(),
         interior_coords[0].max(),
