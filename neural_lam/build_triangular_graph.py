@@ -1,6 +1,6 @@
 # Standard library
+import argparse
 import os
-from argparse import ArgumentParser
 
 # Third-party
 import numpy as np
@@ -11,25 +11,28 @@ from graphcast import graphcast as gc_gc
 from graphcast import grid_mesh_connectivity as gc_gm
 from graphcast import icosahedral_mesh as gc_im
 
+# First-party
 import neural_lam.graphs.create as gcreate
 
+
 def main():
-    """
-    Generate triangular graph using lat-lons
-    """
-    parser = ArgumentParser(description="Graph generation arguments")
+    parser = argparse.ArgumentParser(
+        description="Triangular graph generation using weather-models-graph",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    # Inputs and outputs
     parser.add_argument(
-        "--dataset",
+        "--data_config",
         type=str,
-        default="global_example_era5",
-        help="Dataset to load grid point coordinates from "
-        "(default: global_example_era5)",
+        default="neural_lam/data_config.yaml",
+        help="Path to data config file",
     )
     parser.add_argument(
-        "--graph",
+        "--output_dir",
         type=str,
-        default="global_multiscale",
-        help="Name to save graph as (default: global_multiscale)",
+        default="graphs",
+        help="Directory to save graph to",
     )
     parser.add_argument(
         "--plot",
@@ -37,6 +40,8 @@ def main():
         help="If graphs should be plotted during generation "
         "(default: false)",
     )
+
+    # Graph structure
     parser.add_argument(
         "--splits",
         default=3,
@@ -56,9 +61,10 @@ def main():
     )
     args = parser.parse_args()
 
-    fields_group_path = os.path.join("data", args.dataset, "fields.zarr")
-    graph_dir_path = os.path.join("graphs", args.graph)
-    os.makedirs(graph_dir_path, exist_ok=True)
+    # TODO Get latlons from somewhere, use args.data_config
+    example_dir = "example_lam_latlons"
+    interior_latlons = np.load(os.path.join(example_dir, "nwp_latlon.npy"))
+    boundary_latlons = np.load(os.path.join(example_dir, "o80_latlon.npy"))
 
     # Load grid positions
     fields_group = zarr.open(fields_group_path, mode="r")
@@ -112,7 +118,6 @@ def main():
         )
     else:
         gcreate.create_multiscale_mesh(args.splits, args.levels)
-
 
     m2m_edge_index_list = []
     m2m_features_list = []
