@@ -174,7 +174,7 @@ def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
     )
 
     return (
-        torch.tensor(mesh_edge_index, dtype=torch.float32),
+        torch.tensor(mesh_edge_index, dtype=torch.long),
         torch.tensor(mesh_node_features, dtype=torch.float32),
         torch.tensor(mesh_edge_features, dtype=torch.float32),
         torch.tensor(mesh_lat_lon, dtype=torch.float32),

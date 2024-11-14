@@ -129,7 +129,7 @@ def main():
     for feat_index, file_name in enumerate(
         (
             "m2m_edge_index.pt",
-            "m2m_features.pt",
+            "m2m_node_features.pt",
             "mesh_features.pt",
             "mesh_lat_lon.pt",
         )
