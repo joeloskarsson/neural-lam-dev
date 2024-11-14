@@ -61,128 +61,83 @@ def main():
     )
     args = parser.parse_args()
 
-    # TODO Get latlons from somewhere, use args.data_config
+    assert args.output_dir, "Must specify an --output_dir"
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # TODO Get lat_lon from somewhere, use args.data_config
     example_dir = "example_lam_latlons"
-    interior_latlons = np.load(os.path.join(example_dir, "nwp_latlon.npy"))
-    boundary_latlons = np.load(os.path.join(example_dir, "o80_latlon.npy"))
+    interior_lat_lon_raw = np.load(os.path.join(example_dir, "nwp_latlon.npy"))
+    boundary_lat_lon_raw = np.load(os.path.join(example_dir, "o80_latlon.npy"))
 
-    # Load grid positions
-    fields_group = zarr.open(fields_group_path, mode="r")
-    grid_lat = np.array(
-        fields_group["latitude"], dtype=np.float32
-    )  # (num_lat,)
-    grid_lon = np.array(
-        fields_group["longitude"], dtype=np.float32
-    )  # (num_long,)
-
-    # Create lat-lon grid
-    grid_lat_lon = np.stack(
+    interior_lat_lon = np.stack(
         (
-            np.expand_dims(grid_lat, 0).repeat(
-                len(grid_lon), 0
-            ),  # (num_lat, num_long)
-            np.expand_dims(grid_lon, 1).repeat(
-                len(grid_lat), 1
-            ),  # (num_lon, num_lat)
+            interior_lat_lon_raw[1].flatten(),  # Lon
+            interior_lat_lon_raw[0].flatten(),  # Lat
         ),
-        axis=2,
-    )  # (num_lon, num_lat, 2)
-    num_lon, num_lat, _ = grid_lat_lon.shape
-    grid_lat_lon_flat = grid_lat_lon.reshape(-1, 2)
-    num_grid_nodes = grid_lat_lon_flat.shape[0]
+        axis=1,
+    )
+    boundary_lat_lon = np.stack(
+        (
+            boundary_lat_lon_raw[:, 1],  # Lon
+            boundary_lat_lon_raw[:, 0],  # Lat
+        ),
+        axis=1,
+    )
+
+    # Concatenate interior and boundary coordinates
+    grid_lat_lon = np.concatenate((interior_lat_lon, boundary_lat_lon), axis=0)
+    num_grid_nodes = grid_lat_lon.shape[0]
     # flattened, (num_grid_nodes, 2)
 
-    grid_lat_lon_torch = torch.tensor(grid_lat_lon_flat, dtype=torch.float32)
-    # Save in graph dir?
+    grid_lat_lon_torch = torch.tensor(grid_lat_lon, dtype=torch.float32)
+    # TODO: Save in graph dir?
     torch.save(
-        grid_lat_lon_torch, os.path.join(graph_dir_path, "grid_lat_lon.pt")
+        grid_lat_lon_torch, os.path.join(args.output_dir, "grid_lat_lon.pt")
     )
 
     if args.hierarchical:
         # Save up+down edge index + features to disk
-        torch.save(
-            mesh_up_ei_list,
-            os.path.join(graph_dir_path, "mesh_up_edge_index.pt"),
-        )
-        torch.save(
-            mesh_down_ei_list,
-            os.path.join(graph_dir_path, "mesh_down_edge_index.pt"),
-        )
-        torch.save(
-            mesh_up_features_list,
-            os.path.join(graph_dir_path, "mesh_up_features.pt"),
-        )
-        torch.save(
-            mesh_down_features_list,
-            os.path.join(graph_dir_path, "mesh_down_features.pt"),
-        )
+        #  torch.save(
+        #  mesh_up_ei_list,
+        #  os.path.join(args.output_dir, "mesh_up_edge_index.pt"),
+        #  )
+        #  torch.save(
+        #  mesh_down_ei_list,
+        #  os.path.join(args.output_dir, "mesh_down_edge_index.pt"),
+        #  )
+        #  torch.save(
+        #  mesh_up_features_list,
+        #  os.path.join(args.output_dir, "mesh_up_features.pt"),
+        #  )
+        #  torch.save(
+        #  mesh_down_features_list,
+        #  os.path.join(args.output_dir, "mesh_down_features.pt"),
+        #  )
+        pass
+        # TODO Hierarchical graph
     else:
-        gcreate.create_multiscale_mesh(args.splits, args.levels)
+        merged_mesh = gcreate.create_multiscale_mesh(args.splits, args.levels)
+        m2m_graphs = [merged_mesh]
 
-    m2m_edge_index_list = []
-    m2m_features_list = []
-    mesh_features_list = []
-    mesh_lat_lon_list = []
-    for mesh_graph in m2m_graphs:
-        mesh_edge_index = np.stack(
-            gc_im.faces_to_edges(mesh_graph.faces), axis=0
-        )
-        m2m_edge_index_list.append(mesh_edge_index)
+    mesh_graph_features = [
+        gcreate.extract_mesh_graph_features(mesh_graph)
+        for mesh_graph in m2m_graphs
+    ]
+    # Ordering: edge_index, node_features, edge_features, lat_lon
 
-        # Compute features
-        mesh_lat_lon = vertice_cart_to_lat_lon(mesh_graph.vertices)  # (N, 2)
-        mesh_features, m2m_features = gc_mu.get_graph_spatial_features(
-            node_lat=mesh_lat_lon[:, 0],
-            node_lon=mesh_lat_lon[:, 1],
-            senders=mesh_edge_index[0, :],
-            receivers=mesh_edge_index[1, :],
-            **GC_SPATIAL_FEATURES_KWARGS,
-        )
-        mesh_features_list.append(mesh_features)
-        m2m_features_list.append(m2m_features)
-        mesh_lat_lon_list.append(mesh_lat_lon)
-
-        # Check that indexing is correct
-        _, mesh_theta = gc_mu.lat_lon_deg_to_spherical(
-            mesh_lat_lon[:, 0],
-            mesh_lat_lon[:, 1],
-        )
-        assert np.sum(np.abs(mesh_features[:, 0] - np.cos(mesh_theta))) <= 1e-10
-
-    # Convert to torch
-    m2m_edge_index_torch = [
-        torch.tensor(mesh_ei, dtype=torch.long)
-        for mesh_ei in m2m_edge_index_list
-    ]
-    m2m_features_torch = [
-        torch.tensor(m2m_features, dtype=torch.float32)
-        for m2m_features in m2m_features_list
-    ]
-    mesh_features_torch = [
-        torch.tensor(mesh_features, dtype=torch.float32)
-        for mesh_features in mesh_features_list
-    ]
-    mesh_lat_lon_torch = [
-        torch.tensor(mesh_lat_lon, dtype=torch.float32)
-        for mesh_lat_lon in mesh_lat_lon_list
-    ]
     # Save to static dir
-    torch.save(
-        m2m_edge_index_torch,
-        os.path.join(graph_dir_path, "m2m_edge_index.pt"),
-    )
-    torch.save(
-        m2m_features_torch,
-        os.path.join(graph_dir_path, "m2m_features.pt"),
-    )
-    torch.save(
-        mesh_features_torch,
-        os.path.join(graph_dir_path, "mesh_features.pt"),
-    )
-    torch.save(
-        mesh_lat_lon_torch,
-        os.path.join(graph_dir_path, "mesh_lat_lon.pt"),
-    )
+    for feat_index, file_name in enumerate(
+        (
+            "m2m_edge_index.pt",
+            "m2m_features.pt",
+            "mesh_features.pt",
+            "mesh_lat_lon.pt",
+        )
+    ):
+        torch.save(
+            [feats[feat_index] for feats in mesh_graph_features],
+            os.path.join(args.output_dir, file_name),
+        )
 
     if args.plot:
         for level_i, (m2m_edge_index, mesh_lat_lon) in enumerate(
@@ -224,8 +179,8 @@ def main():
 
     # Only care about edge features here
     _, _, g2m_features = gc_mu.get_bipartite_graph_spatial_features(
-        senders_node_lat=grid_lat_lon_flat[:, 0],
-        senders_node_lon=grid_lat_lon_flat[:, 1],
+        senders_node_lat=grid_lat_lon[:, 0],
+        senders_node_lon=grid_lat_lon[:, 1],
         senders=g2m_edge_index[0, :],
         receivers_node_lat=grid_con_mesh_lat_lon[:, 0],
         receivers_node_lon=grid_con_mesh_lat_lon[:, 1],
@@ -236,11 +191,11 @@ def main():
 
     torch.save(
         g2m_edge_index_torch,
-        os.path.join(graph_dir_path, "g2m_edge_index.pt"),
+        os.path.join(args.output_dir, "g2m_edge_index.pt"),
     )
     torch.save(
         g2m_features_torch,
-        os.path.join(graph_dir_path, "g2m_features.pt"),
+        os.path.join(args.output_dir, "g2m_features.pt"),
     )
 
     # Mesh2Grid: Connect to containing mesh triangle
@@ -259,8 +214,8 @@ def main():
         senders_node_lat=grid_con_mesh_lat_lon[:, 0],
         senders_node_lon=grid_con_mesh_lat_lon[:, 1],
         senders=m2g_edge_index[0, :],
-        receivers_node_lat=grid_lat_lon_flat[:, 0],
-        receivers_node_lon=grid_lat_lon_flat[:, 1],
+        receivers_node_lat=grid_lat_lon[:, 0],
+        receivers_node_lon=grid_lat_lon[:, 1],
         receivers=m2g_edge_index[1, :],
         **GC_SPATIAL_FEATURES_KWARGS,
     )
@@ -268,11 +223,11 @@ def main():
 
     torch.save(
         m2g_edge_index_torch,
-        os.path.join(graph_dir_path, "m2g_edge_index.pt"),
+        os.path.join(args.output_dir, "m2g_edge_index.pt"),
     )
     torch.save(
         m2g_features_torch,
-        os.path.join(graph_dir_path, "m2g_features.pt"),
+        os.path.join(args.output_dir, "m2g_features.pt"),
     )
 
     num_mesh_nodes = grid_con_mesh_lat_lon.shape[0]
