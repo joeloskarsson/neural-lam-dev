@@ -155,3 +155,35 @@ def create_hierarchical_mesh(splits, levels):
         mesh_down_features_list.append(
             torch.tensor(mesh_down_features, dtype=torch.float32)
         )
+
+
+def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
+    """
+    Extract torch tensors for edge_index and features from single TriangularMesh
+    """
+    mesh_edge_index = np.stack(gc_im.faces_to_edges(mesh_graph.faces), axis=0)
+
+    # Compute features
+    mesh_lat_lon = gutils.vertice_cart_to_lat_lon(mesh_graph.vertices)  # (N, 2)
+    mesh_node_features, mesh_edge_features = gc_mu.get_graph_spatial_features(
+        node_lat=mesh_lat_lon[:, 0],
+        node_lon=mesh_lat_lon[:, 1],
+        senders=mesh_edge_index[0, :],
+        receivers=mesh_edge_index[1, :],
+        **GC_SPATIAL_FEATURES_KWARGS,
+    )
+
+    return (
+        torch.tensor(mesh_edge_index, dtype=torch.float32),
+        torch.tensor(mesh_node_features, dtype=torch.float32),
+        torch.tensor(mesh_edge_features, dtype=torch.float32),
+        torch.tensor(mesh_lat_lon, dtype=torch.float32),
+    )
+
+    # TODO Move below to a test?
+    # Check that indexing is correct
+    #  _, mesh_theta = gc_mu.lat_lon_deg_to_spherical(
+    #  mesh_lat_lon[:, 0],
+    #  mesh_lat_lon[:, 1],
+    #  )
+    #  assert np.sum(np.abs(mesh_features[:, 0] - np.cos(mesh_theta))) <= 1e-1
