@@ -196,11 +196,11 @@ class WeatherDataset(torch.utils.data.Dataset):
                 # Calculate required bounds for boundary using its time step
                 boundary_required_time_min = (
                     state_time_min
-                    - self.num_past_forcing_steps * self.time_step_boundary
+                    - self.num_past_boundary_steps * self.time_step_boundary
                 )
                 boundary_required_time_max = (
                     state_time_max
-                    + self.num_future_forcing_steps * self.time_step_boundary
+                    + self.num_future_boundary_steps * self.time_step_boundary
                 )
 
                 if boundary_time_min > boundary_required_time_min:
