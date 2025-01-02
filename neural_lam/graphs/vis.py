@@ -2,18 +2,23 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import torch_geometric as pyg
 
 
-def plot_graph(edge_index, pos_lat_lon, title=None):
+def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
     """
     Plot flattened global graph
 
     edge_index: (2, N_edges) tensor
-    pos_lat_lon: (N_nodes, 2) tensor containing longitudes and latitudes
+    from_node_pos: (N_nodes, 2) tensor containing longitudes and latitudes
+    to_node_pos: (N_nodes, 2) tensor containing longitudes and latitudes,
+        or None (assumed same as from_node_pos)
     """
-    fig, axis = plt.subplots(figsize=(8, 8), dpi=200)  # W,H
+    if to_node_pos is None:
+        # If to_node_pos is None it is same as from_node_pos
+        to_node_pos = from_node_pos
+
+    fig, axis = plt.subplots()
 
     # Fix for re-indexed edge indices only containing mesh nodes at
     # higher levels in hierarchy
@@ -23,20 +28,22 @@ def plot_graph(edge_index, pos_lat_lon, title=None):
         # Keep only 1 direction of edge_index
         edge_index = edge_index[:, edge_index[0] < edge_index[1]]  # (2, M/2)
 
-    # Move all to cpu and numpy, compute (in)-degrees
+    # Compute (in)-degrees
+    print(edge_index)
     degrees = (
-        pyg.utils.degree(edge_index[1], num_nodes=pos_lat_lon.shape[0])
+        pyg.utils.degree(edge_index[1], num_nodes=to_node_pos.shape[0])
         .cpu()
         .numpy()
     )
+
+    # Move tensors to cpu and make numpy
     edge_index = edge_index.cpu().numpy()
-    # Make lon x-axis
-    pos = torch.stack((pos_lat_lon[:, 1], pos_lat_lon[:, 0]), dim=1)
-    pos = pos.cpu().numpy()
+    from_node_pos = from_node_pos.cpu().numpy()
+    to_node_pos = to_node_pos.cpu().numpy()
 
     # Plot edges
-    from_pos = pos[edge_index[0]]  # (M/2, 2)
-    to_pos = pos[edge_index[1]]  # (M/2, 2)
+    from_pos = from_node_pos[edge_index[0]]  # (M/2, 2)
+    to_pos = to_node_pos[edge_index[1]]  # (M/2, 2)
     edge_lines = np.stack((from_pos, to_pos), axis=1)
     axis.add_collection(
         matplotlib.collections.LineCollection(
@@ -44,10 +51,10 @@ def plot_graph(edge_index, pos_lat_lon, title=None):
         )
     )
 
-    # Plot nodes
+    # Plot (receiver) nodes
     node_scatter = axis.scatter(
-        pos[:, 0],
-        pos[:, 1],
+        to_node_pos[:, 0],
+        to_node_pos[:, 1],
         c=degrees,
         s=3,
         marker="o",

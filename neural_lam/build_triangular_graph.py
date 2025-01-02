@@ -3,16 +3,15 @@ import argparse
 import os
 
 # Third-party
+import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import torch
-import zarr
 from graphcast import graphcast as gc_gc
 from graphcast import grid_mesh_connectivity as gc_gm
-from graphcast import icosahedral_mesh as gc_im
 
 # First-party
 import neural_lam.graphs.create as gcreate
+import neural_lam.graphs.vis as gvis
 
 
 def main():
@@ -46,18 +45,17 @@ def main():
         "--splits",
         default=3,
         type=int,
-        help="Number of splits to triangular mesh (default: 3)",
+        help="Number of splits to triangular mesh",
     )
     parser.add_argument(
         "--levels",
         type=int,
-        help="Number of levels to keep, from finest upwards "
-        "(default: None (keep all))",
+        help="Number of levels to keep, from finest upwards ",
     )
     parser.add_argument(
         "--hierarchical",
         action="store_true",
-        help="Generate hierarchical mesh graph (default: false)",
+        help="Generate hierarchical mesh graph",
     )
     args = parser.parse_args()
 
@@ -86,8 +84,11 @@ def main():
 
     # Concatenate interior and boundary coordinates
     grid_lat_lon = np.concatenate((interior_lat_lon, boundary_lat_lon), axis=0)
-    num_grid_nodes = grid_lat_lon.shape[0]
     # flattened, (num_grid_nodes, 2)
+    num_grid_nodes = grid_lat_lon.shape[0]
+
+    # Make all longitudes be in [0, 360]
+    grid_lat_lon[:, 0] = (grid_lat_lon[:, 0] + 360.0) % 360.0
 
     grid_lat_lon_torch = torch.tensor(grid_lat_lon, dtype=torch.float32)
     # TODO: Save in graph dir?
@@ -95,6 +96,7 @@ def main():
         grid_lat_lon_torch, os.path.join(args.output_dir, "grid_lat_lon.pt")
     )
 
+    # === Create mesh graph ===
     if args.hierarchical:
         # Save up+down edge index + features to disk
         #  torch.save(
@@ -129,55 +131,55 @@ def main():
     for feat_index, file_name in enumerate(
         (
             "m2m_edge_index.pt",
-            "m2m_node_features.pt",
             "mesh_features.pt",
+            "m2m_features.pt",
             "mesh_lat_lon.pt",
         )
     ):
         torch.save(
+            # Save as list
             [feats[feat_index] for feats in mesh_graph_features],
             os.path.join(args.output_dir, file_name),
         )
 
     if args.plot:
-        for level_i, (m2m_edge_index, mesh_lat_lon) in enumerate(
-            zip(m2m_edge_index_torch, mesh_lat_lon_torch)
+        # Plot each mesh graph level
+        for level_i, (level_edge_index, _, _, level_lat_lon) in enumerate(
+            mesh_graph_features
         ):
-            plot_graph(
-                m2m_edge_index, mesh_lat_lon, title=f"Mesh level {level_i}"
+            gvis.plot_graph(
+                level_edge_index, level_lat_lon, title=f"Mesh level {level_i}"
             )
             plt.show()
 
-    # Because GC code returns indexes into flattened lat-lon matrix, we have to
-    # re-map grid indices. We always work with lon-lat order, to be consistent
-    # with WB2 data.
-    # This creates the correct mapping for the grid indices
-    grid_index_map = (
-        torch.arange(num_grid_nodes).reshape(num_lon, num_lat).T.flatten()
-    )
-
+    # === Grid2Mesh ===
     # Grid2Mesh: Radius-based
-    grid_con_mesh = m2m_graphs[0]  # Mesh graph that should be connected to grid
-    grid_con_mesh_lat_lon = mesh_lat_lon_list[0]
+    grid_con_mesh = m2m_graphs[-1]  # Mesh that should be connected to grid
+    grid_con_lat_lon = mesh_graph_features[-1][-1]
 
     # Compute maximum edge distance in finest mesh
     # pylint: disable-next=protected-access
-    max_mesh_edge_len = gc_gc._get_max_edge_distance(mesh_list[-1])
+    # TODO Get distance from finest mesh, even when collapsed to multi-scale
+    max_mesh_edge_len = gc_gc._get_max_edge_distance(m2m_graphs[-1])
     g2m_connect_radius = 0.6 * max_mesh_edge_len
-    g2m_grid_mesh_indices = gc_gm.radius_query_indices(
-        grid_latitude=grid_lat,
-        grid_longitude=grid_lon,
-        mesh=grid_con_mesh,
-        radius=g2m_connect_radius,
-    )
-    # Returns two arrays of node indices, each [num_edges]
 
-    g2m_edge_index = np.stack(g2m_grid_mesh_indices, axis=0)
-    g2m_edge_index_torch = torch.tensor(g2m_edge_index, dtype=torch.long)
-    # Grid index fix
-    g2m_edge_index_torch[0] = grid_index_map[g2m_edge_index_torch[0]]
+    g2m_edge_index = gcreate.connect_to_mesh_radius(
+        grid_lat_lon, grid_con_mesh, g2m_connect_radius
+    )
+
+    if args.plot:
+        gvis.plot_graph(
+            g2m_edge_index,
+            from_node_pos=grid_lat_lon_torch,
+            to_node_pos=grid_con_lat_lon,
+            title="Grid2Mesh",
+        )
+        plt.show()
+
+    # TODO Get edge features for g2m
 
     # Only care about edge features here
+    # grid_con_mesh_lat_lon = mesh_lat_lon_list[0]
     _, _, g2m_features = gc_mu.get_bipartite_graph_spatial_features(
         senders_node_lat=grid_lat_lon[:, 0],
         senders_node_lon=grid_lat_lon[:, 1],
@@ -198,6 +200,7 @@ def main():
         os.path.join(args.output_dir, "g2m_features.pt"),
     )
 
+    # === Mesh2Grid ===
     # Mesh2Grid: Connect to containing mesh triangle
     m2g_grid_mesh_indices = gc_gm.in_mesh_triangle_indices(
         grid_latitude=grid_lat,

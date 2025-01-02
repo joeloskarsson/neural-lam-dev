@@ -2,7 +2,6 @@
 import numpy as np
 import scipy
 import torch
-import zarr
 from graphcast import graphcast as gc_gc
 from graphcast import grid_mesh_connectivity as gc_gm
 from graphcast import icosahedral_mesh as gc_im
@@ -123,29 +122,29 @@ def create_hierarchical_mesh(splits, levels):
         mesh_up_ei_list.append(torch.tensor(mesh_up_ei, dtype=torch.long))
         mesh_down_ei_list.append(torch.tensor(mesh_down_ei, dtype=torch.long))
 
-        from_mesh_lat_lon = gutils.vertice_cart_to_lat_lon(
+        from_mesh_lat_lon = gutils.node_cart_to_lat_lon(
             from_mesh.vertices
         )  # (N, 2)
-        to_mesh_lat_lon = gutils.vertice_cart_to_lat_lon(
+        to_mesh_lat_lon = gutils.node_cart_to_lat_lon(
             to_mesh.vertices
         )  # (N, 2)
 
         # Extract features for hierarchical edges
         _, _, mesh_up_features = gc_mu.get_bipartite_graph_spatial_features(
-            senders_node_lat=from_mesh_lat_lon[:, 0],
-            senders_node_lon=from_mesh_lat_lon[:, 1],
+            senders_node_lat=from_mesh_lat_lon[:, 1],
+            senders_node_lon=from_mesh_lat_lon[:, 0],
             senders=mesh_up_ei[0, :],
-            receivers_node_lat=to_mesh_lat_lon[:, 0],
-            receivers_node_lon=to_mesh_lat_lon[:, 1],
+            receivers_node_lat=to_mesh_lat_lon[:, 1],
+            receivers_node_lon=to_mesh_lat_lon[:, 0],
             receivers=mesh_up_ei[1, :],
             **GC_SPATIAL_FEATURES_KWARGS,
         )
         _, _, mesh_down_features = gc_mu.get_bipartite_graph_spatial_features(
-            senders_node_lat=to_mesh_lat_lon[:, 0],
-            senders_node_lon=to_mesh_lat_lon[:, 1],
+            senders_node_lat=to_mesh_lat_lon[:, 1],
+            senders_node_lon=to_mesh_lat_lon[:, 0],
             senders=mesh_down_ei[0, :],
-            receivers_node_lat=from_mesh_lat_lon[:, 0],
-            receivers_node_lon=from_mesh_lat_lon[:, 1],
+            receivers_node_lat=from_mesh_lat_lon[:, 1],
+            receivers_node_lon=from_mesh_lat_lon[:, 0],
             receivers=mesh_down_ei[1, :],
             **GC_SPATIAL_FEATURES_KWARGS,
         )
@@ -157,6 +156,28 @@ def create_hierarchical_mesh(splits, levels):
         )
 
 
+def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
+    """
+    Connect edge_index that connects given grid positions to mesh, if within
+    specific radius of mesh node.
+
+    grid_pos: (num_grid_nodes, 2) np.array containing lat-lons of grid nodes
+    mesh: TriangularMesh, the mesh to connect to
+    radius: float, the radius to connect within (in euclidean distance)
+    """
+    grid_mesh_indices = gutils.radius_query_indices_irregular(
+        grid_lat_lon=grid_pos,
+        mesh=mesh,
+        radius=radius,
+    )
+    # Returns two arrays of node indices, each [num_edges]
+
+    # Stacking order to have from grid to mesh
+    edge_index = np.stack(grid_mesh_indices, axis=0)
+    edge_index_torch = torch.tensor(edge_index, dtype=torch.long)
+    return edge_index_torch
+
+
 def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
     """
     Extract torch tensors for edge_index and features from single TriangularMesh
@@ -164,10 +185,10 @@ def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
     mesh_edge_index = np.stack(gc_im.faces_to_edges(mesh_graph.faces), axis=0)
 
     # Compute features
-    mesh_lat_lon = gutils.vertice_cart_to_lat_lon(mesh_graph.vertices)  # (N, 2)
+    mesh_lat_lon = gutils.node_cart_to_lat_lon(mesh_graph.vertices)  # (N, 2)
     mesh_node_features, mesh_edge_features = gc_mu.get_graph_spatial_features(
-        node_lat=mesh_lat_lon[:, 0],
-        node_lon=mesh_lat_lon[:, 1],
+        node_lat=mesh_lat_lon[:, 1],
+        node_lon=mesh_lat_lon[:, 0],
         senders=mesh_edge_index[0, :],
         receivers=mesh_edge_index[1, :],
         **GC_SPATIAL_FEATURES_KWARGS,
