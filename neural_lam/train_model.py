@@ -304,10 +304,20 @@ def main(input_args=None):
         mode="min",
         save_last=True,
     )
+    # Add WandB Model Checkpoint callback
+    wandb_checkpoint = pl.callbacks.ModelCheckpoint(
+        dirpath=f"wandb_artifacts/{run_name}",
+        filename="model-{epoch:02d}-{val_mean_loss:.2f}",
+        monitor="val_mean_loss",
+        mode="min",
+        save_top_k=1,
+        save_last=True,
+    )
     logger = pl.loggers.WandbLogger(
         project=args.wandb_project,
         name=run_name,
         config=dict(training=vars(args), datastore=datastore._config),
+        log_model=True,
     )
     trainer = pl.Trainer(
         max_epochs=args.epochs,
@@ -318,7 +328,7 @@ def main(input_args=None):
         strategy="ddp",  # Use DistributedDataParallel strategy
         logger=logger,
         log_every_n_steps=1,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, wandb_checkpoint],
         check_val_every_n_epoch=args.val_interval,
         precision=args.precision,
     )
