@@ -81,8 +81,7 @@ def main(input_args=None):
         "--graph_name",
         type=str,
         default="multiscale",
-        help="Graph to load and use in graph-based model "
-        "(default: multiscale)",
+        help="Graph to load and use in graph-based model (default: multiscale)",
     )
     parser.add_argument(
         "--hidden_dim",
@@ -235,9 +234,9 @@ def main(input_args=None):
     }
 
     # Asserts for arguments
-    assert (
-        args.config_path is not None
-    ), "Specify your config with --config_path"
+    assert args.config_path is not None, (
+        "Specify your config with --config_path"
+    )
     assert args.model in MODELS, f"Unknown model: {args.model}"
     assert args.eval in (
         None,
@@ -297,15 +296,6 @@ def main(input_args=None):
         f"{prefix}{args.model}-{args.processor_layers}x{args.hidden_dim}-"
         f"{time.strftime('%m_%d_%H')}-{random_run_id:04d}"
     )
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=f"saved_models/{run_name}",
-        filename="min_val_loss",
-        monitor="val_mean_loss",
-        mode="min",
-        save_last=True,
-        state_key="checkpoint_regular",
-    )
-
     wandb_checkpoint = pl.callbacks.ModelCheckpoint(
         dirpath=f"wandb_artifacts/{run_name}",
         filename="model-{epoch:02d}-{val_mean_loss:.2f}",
@@ -313,7 +303,6 @@ def main(input_args=None):
         mode="min",
         save_top_k=1,
         save_last=True,
-        state_key="checkpoint_wandb",
     )
     logger = pl.loggers.WandbLogger(
         project=args.wandb_project,
@@ -330,7 +319,7 @@ def main(input_args=None):
         strategy="ddp",  # Use DistributedDataParallel strategy
         logger=logger,
         log_every_n_steps=1,
-        callbacks=[checkpoint_callback, wandb_checkpoint],
+        callbacks=[wandb_checkpoint],
         check_val_every_n_epoch=args.val_interval,
         precision=args.precision,
     )
