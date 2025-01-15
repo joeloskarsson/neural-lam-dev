@@ -303,8 +303,9 @@ def main(input_args=None):
         monitor="val_mean_loss",
         mode="min",
         save_last=True,
+        state_key="checkpoint_regular",
     )
-    # Add WandB Model Checkpoint callback
+
     wandb_checkpoint = pl.callbacks.ModelCheckpoint(
         dirpath=f"wandb_artifacts/{run_name}",
         filename="model-{epoch:02d}-{val_mean_loss:.2f}",
@@ -312,6 +313,7 @@ def main(input_args=None):
         mode="min",
         save_top_k=1,
         save_last=True,
+        state_key="checkpoint_wandb",
     )
     logger = pl.loggers.WandbLogger(
         project=args.wandb_project,
