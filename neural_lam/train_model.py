@@ -50,6 +50,12 @@ def main(input_args=None):
         help="Number of workers in data loader (default: 4)",
     )
     parser.add_argument(
+        "--num_nodes",
+        type=int,
+        default=1,
+        help="Number of nodes to use in DDP (default: 1)",
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=200,
@@ -296,30 +302,27 @@ def main(input_args=None):
         f"{prefix}{args.model}-{args.processor_layers}x{args.hidden_dim}-"
         f"{time.strftime('%m_%d_%H')}-{random_run_id:04d}"
     )
-    wandb_checkpoint = pl.callbacks.ModelCheckpoint(
-        dirpath=f"wandb_artifacts/{run_name}",
-        filename="model-{epoch:02d}-{val_mean_loss:.2f}",
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=f"saved_models/{run_name}",
+        filename="min_val_loss",
         monitor="val_mean_loss",
         mode="min",
-        save_top_k=1,
         save_last=True,
     )
     logger = pl.loggers.WandbLogger(
         project=args.wandb_project,
         name=run_name,
         config=dict(training=vars(args), datastore=datastore._config),
-        log_model=True,
     )
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         deterministic=True,
-        accelerator="gpu",
-        devices=torch.cuda.device_count(),
-        num_nodes=4,  # Match this with your SLURM --nodes setting
-        strategy="ddp",  # Use DistributedDataParallel strategy
+        strategy="ddp",
+        accelerator=device_name,
+        num_nodes=args.num_nodes,
         logger=logger,
         log_every_n_steps=1,
-        callbacks=[wandb_checkpoint],
+        callbacks=[checkpoint_callback],
         check_val_every_n_epoch=args.val_interval,
         precision=args.precision,
     )
