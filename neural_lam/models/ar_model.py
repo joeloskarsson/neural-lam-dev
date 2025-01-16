@@ -267,8 +267,13 @@ class ARModel(pl.LightningModule):
             else:
                 boundary_forcing_step = None
 
-            pred_state, pred_std = self.predict_step(
-                prev_state, prev_prev_state, forcing_step, boundary_forcing_step
+            pred_state, pred_std = torch.utils.checkpoint.checkpoint(
+                self.predict_step,
+                prev_state,
+                prev_prev_state,
+                forcing_step,
+                boundary_forcing_step,
+                use_reentrant=False,
             )
             # state: (B, num_interior_nodes, d_f)
             # pred_std: (B, num_interior_nodes, d_f) or None
