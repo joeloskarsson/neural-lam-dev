@@ -7,9 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import xarray as xr
-
 import wandb
+import xarray as xr
 
 # Local
 from .. import metrics, vis
@@ -621,12 +620,14 @@ class ARModel(pl.LightningModule):
 
                 example_i = self.plotted_examples
 
-                wandb.log({
-                    f"{var_name}_example_{example_i}": wandb.Image(fig)
-                    for var_name, fig in zip(
-                        self._datastore.get_vars_names("state"), var_figs
-                    )
-                })
+                wandb.log(
+                    {
+                        f"{var_name}_example_{example_i}": wandb.Image(fig)
+                        for var_name, fig in zip(
+                            self._datastore.get_vars_names("state"), var_figs
+                        )
+                    }
+                )
                 plt.close(
                     "all"
                 )  # Close all figs for this time step, saves memory
