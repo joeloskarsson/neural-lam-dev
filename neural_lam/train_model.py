@@ -161,6 +161,12 @@ def main(input_args=None):
         "--lr", type=float, default=1e-3, help="learning rate (default: 0.001)"
     )
     parser.add_argument(
+        "--min_lr",
+        type=float,
+        default=0.0,
+        help="Minimum learning rate for cosine annealing (default: 0.0)",
+    )
+    parser.add_argument(
         "--val_interval",
         type=int,
         default=1,
@@ -265,9 +271,9 @@ def main(input_args=None):
     }
 
     # Asserts for arguments
-    assert (
-        args.config_path is not None
-    ), "Specify your config with --config_path"
+    assert args.config_path is not None, (
+        "Specify your config with --config_path"
+    )
     assert args.model in MODELS, f"Unknown model: {args.model}"
     assert args.eval in (
         None,

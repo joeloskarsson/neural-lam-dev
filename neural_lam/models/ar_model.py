@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import wandb
 import xarray as xr
+
+import wandb
 
 # Local
 from .. import metrics, vis
@@ -251,7 +252,19 @@ class ARModel(pl.LightningModule):
         opt = torch.optim.AdamW(
             self.parameters(), lr=self.args.lr, betas=(0.9, 0.95)
         )
-        return opt
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt,
+            T_max=self.args.epochs,
+            eta_min=self.args.min_lr if hasattr(self.args, "min_lr") else 0.0,
+        )
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            },
+        }
 
     @staticmethod
     def expand_to_batch(x, batch_size):
@@ -608,14 +621,12 @@ class ARModel(pl.LightningModule):
 
                 example_i = self.plotted_examples
 
-                wandb.log(
-                    {
-                        f"{var_name}_example_{example_i}": wandb.Image(fig)
-                        for var_name, fig in zip(
-                            self._datastore.get_vars_names("state"), var_figs
-                        )
-                    }
-                )
+                wandb.log({
+                    f"{var_name}_example_{example_i}": wandb.Image(fig)
+                    for var_name, fig in zip(
+                        self._datastore.get_vars_names("state"), var_figs
+                    )
+                })
                 plt.close(
                     "all"
                 )  # Close all figs for this time step, saves memory
@@ -786,5 +797,8 @@ class ARModel(pl.LightningModule):
                 loaded_state_dict[new_key] = loaded_state_dict[old_key]
                 del loaded_state_dict[old_key]
         if not self.restore_opt:
-            opt = self.configure_optimizers()
-            checkpoint["optimizer_states"] = [opt.state_dict()]
+            # Remove both optimizer and scheduler states if not restoring
+            if "optimizer_states" in checkpoint:
+                del checkpoint["optimizer_states"]
+            if "lr_schedulers" in checkpoint:
+                del checkpoint["lr_schedulers"]
