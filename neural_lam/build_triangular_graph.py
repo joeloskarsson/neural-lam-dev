@@ -9,9 +9,11 @@ import torch
 from graphcast import graphcast as gc_gc
 from graphcast import grid_mesh_connectivity as gc_gm
 
-# First-party
-import neural_lam.graphs.create as gcreate
-import neural_lam.graphs.vis as gvis
+# Local
+from . import utils
+from .config import load_config_and_datastores
+from .graphs import create as gcreate
+from .graphs import vis as gvis
 
 
 def main():
@@ -22,16 +24,15 @@ def main():
 
     # Inputs and outputs
     parser.add_argument(
-        "--data_config",
+        "--config_path",
         type=str,
-        default="neural_lam/data_config.yaml",
-        help="Path to data config file",
+        help="Path to the configuration for neural-lam",
     )
     parser.add_argument(
-        "--output_dir",
+        "--graph_name",
         type=str,
-        default="graphs",
-        help="Directory to save graph to",
+        default="multiscale",
+        help="Name to save graph as (default: multiscale)",
     )
     parser.add_argument(
         "--plot",
@@ -58,46 +59,30 @@ def main():
     )
     args = parser.parse_args()
 
-    assert args.output_dir, "Must specify an --output_dir"
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    # TODO Get lat_lon from somewhere, use args.data_config
-    example_dir = "example_lam_latlons"
-    interior_lat_lon_raw = np.load(
-        os.path.join(example_dir, "nwp_latlon.npy")
-    ).astype(np.float32)
-    boundary_lat_lon_raw = np.load(
-        os.path.join(example_dir, "o80_latlon.npy")
-    ).astype(np.float32)
-
-    interior_lat_lon = np.stack(
-        (
-            interior_lat_lon_raw[1].flatten(),  # Lon
-            interior_lat_lon_raw[0].flatten(),  # Lat
-        ),
-        axis=1,
-    )
-    boundary_lat_lon = np.stack(
-        (
-            boundary_lat_lon_raw[:, 1],  # Lon
-            boundary_lat_lon_raw[:, 0],  # Lat
-        ),
-        axis=1,
+    _, datastore, datastore_boundary = load_config_and_datastores(
+        config_path=args.config_path
     )
 
-    # Concatenate interior and boundary coordinates
-    grid_lat_lon = np.concatenate((interior_lat_lon, boundary_lat_lon), axis=0)
+    # Set up dir for saving graph
+    save_dir_path = os.path.join(datastore.root_path, "graphs", args.graph_name)
+    os.makedirs(save_dir_path, exist_ok=True)
+
+    # Load grid positions
+    grid_lat_lon = utils.get_stacked_lat_lons(
+        datastore, datastore_boundary
+    ).astype(
+        np.float32
+    )  # Must be float32 for interoperability with gc code
     grid_lat_lon = grid_lat_lon[::1000]  # TODO Remove
-    # flattened, (num_grid_nodes, 2)
+    # (num_nodes_full, 2)
     num_grid_nodes = grid_lat_lon.shape[0]
 
     # Make all longitudes be in [0, 360]
     grid_lat_lon[:, 0] = (grid_lat_lon[:, 0] + 360.0) % 360.0
 
     grid_lat_lon_torch = torch.tensor(grid_lat_lon, dtype=torch.float32)
-    # TODO: Save in graph dir?
     torch.save(
-        grid_lat_lon_torch, os.path.join(args.output_dir, "grid_lat_lon.pt")
+        grid_lat_lon_torch, os.path.join(save_dir_path, "grid_lat_lon.pt")
     )
 
     # === Create mesh graph ===
@@ -105,19 +90,19 @@ def main():
         # Save up+down edge index + features to disk
         #  torch.save(
         #  mesh_up_ei_list,
-        #  os.path.join(args.output_dir, "mesh_up_edge_index.pt"),
+        #  os.path.join(save_dir_path, "mesh_up_edge_index.pt"),
         #  )
         #  torch.save(
         #  mesh_down_ei_list,
-        #  os.path.join(args.output_dir, "mesh_down_edge_index.pt"),
+        #  os.path.join(save_dir_path, "mesh_down_edge_index.pt"),
         #  )
         #  torch.save(
         #  mesh_up_features_list,
-        #  os.path.join(args.output_dir, "mesh_up_features.pt"),
+        #  os.path.join(save_dir_path, "mesh_up_features.pt"),
         #  )
         #  torch.save(
         #  mesh_down_features_list,
-        #  os.path.join(args.output_dir, "mesh_down_features.pt"),
+        #  os.path.join(save_dir_path, "mesh_down_features.pt"),
         #  )
         # max_mesh_edge_len = ?
         pass
@@ -147,7 +132,7 @@ def main():
         torch.save(
             # Save as list
             [feats[feat_index] for feats in mesh_graph_features],
-            os.path.join(args.output_dir, file_name),
+            os.path.join(save_dir_path, file_name),
         )
 
     if args.plot:
@@ -190,11 +175,11 @@ def main():
     # Save g2m
     torch.save(
         g2m_edge_index,
-        os.path.join(args.output_dir, "g2m_edge_index.pt"),
+        os.path.join(save_dir_path, "g2m_edge_index.pt"),
     )
     torch.save(
         g2m_edge_features,
-        os.path.join(args.output_dir, "g2m_features.pt"),
+        os.path.join(save_dir_path, "g2m_features.pt"),
     )
 
     # === Mesh2Grid ===
@@ -221,11 +206,11 @@ def main():
     # Save m2g
     torch.save(
         m2g_edge_index,
-        os.path.join(args.output_dir, "m2g_edge_index.pt"),
+        os.path.join(save_dir_path, "m2g_edge_index.pt"),
     )
     torch.save(
         m2g_edge_features,
-        os.path.join(args.output_dir, "m2g_features.pt"),
+        os.path.join(save_dir_path, "m2g_features.pt"),
     )
 
     num_mesh_nodes = grid_con_lat_lon.shape[0]
