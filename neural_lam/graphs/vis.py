@@ -29,7 +29,6 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         edge_index = edge_index[:, edge_index[0] < edge_index[1]]  # (2, M/2)
 
     # Compute (in)-degrees
-    print(edge_index)
     degrees = (
         pyg.utils.degree(edge_index[1], num_nodes=to_node_pos.shape[0])
         .cpu()

@@ -128,7 +128,7 @@ def create_hierarchical_mesh(splits, levels):
             to_mesh.vertices
         )  # (N, 2)
 
-        # Extract features for hierarchical edges
+        # create features for hierarchical edges
         _, _, mesh_up_features = gc_mu.get_bipartite_graph_spatial_features(
             senders_node_lat=from_mesh_lat_lon[:, 1],
             senders_node_lon=from_mesh_lat_lon[:, 0],
@@ -177,9 +177,9 @@ def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
     return edge_index_torch
 
 
-def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
+def create_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
     """
-    Extract torch tensors for edge_index and features from single TriangularMesh
+    Create torch tensors for edge_index and features from single TriangularMesh
     """
     mesh_edge_index = np.stack(gc_im.faces_to_edges(mesh_graph.faces), axis=0)
 
@@ -199,6 +199,51 @@ def extract_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
         torch.tensor(mesh_edge_features, dtype=torch.float32),
         torch.tensor(mesh_lat_lon, dtype=torch.float32),
     )
+
+
+def create_edge_features(
+    edge_index,
+    sender_coords=None,
+    receiver_coords=None,
+    sender_mesh=None,
+    receiver_mesh=None,
+):
+    """
+    Create torch tensors with edge features for given edge_index
+    """
+    if sender_mesh is not None:
+        assert (
+            sender_coords is None
+        ), "Can not extract features using both sender coords and sender mesh"
+        sender_coords = gutils.node_cart_to_lat_lon(sender_mesh.vertices)
+        # (N, 2)
+    assert sender_coords is not None, (
+        "Either sender_coords or sender_mesh has to be given to "
+        "create_edge_features"
+    )
+
+    if receiver_mesh is not None:
+        assert receiver_coords is None, (
+            "Can not extract features using both receiver coords and "
+            "receiver mesh"
+        )
+        receiver_coords = gutils.node_cart_to_lat_lon(receiver_mesh.vertices)
+        # (N, 2)
+    assert receiver_coords is not None, (
+        "Either receiver_coords or receiver_mesh has to be given to "
+        "create_edge_features"
+    )
+
+    _, _, edge_features = gc_mu.get_bipartite_graph_spatial_features(
+        senders_node_lat=sender_coords[:, 0],
+        senders_node_lon=sender_coords[:, 1],
+        senders=edge_index[0, :],
+        receivers_node_lat=receiver_coords[:, 0],
+        receivers_node_lon=receiver_coords[:, 1],
+        receivers=edge_index[1, :],
+        **GC_SPATIAL_FEATURES_KWARGS,
+    )
+    return torch.tensor(edge_features, dtype=torch.float32)
 
     # TODO Move below to a test?
     # Check that indexing is correct

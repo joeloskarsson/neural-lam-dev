@@ -63,8 +63,12 @@ def main():
 
     # TODO Get lat_lon from somewhere, use args.data_config
     example_dir = "example_lam_latlons"
-    interior_lat_lon_raw = np.load(os.path.join(example_dir, "nwp_latlon.npy"))
-    boundary_lat_lon_raw = np.load(os.path.join(example_dir, "o80_latlon.npy"))
+    interior_lat_lon_raw = np.load(
+        os.path.join(example_dir, "nwp_latlon.npy")
+    ).astype(np.float32)
+    boundary_lat_lon_raw = np.load(
+        os.path.join(example_dir, "o80_latlon.npy")
+    ).astype(np.float32)
 
     interior_lat_lon = np.stack(
         (
@@ -126,7 +130,7 @@ def main():
         m2m_graphs = [merged_mesh]
 
     mesh_graph_features = [
-        gcreate.extract_mesh_graph_features(mesh_graph)
+        gcreate.create_mesh_graph_features(mesh_graph)
         for mesh_graph in m2m_graphs
     ]
     # Ordering: edge_index, node_features, edge_features, lat_lon
@@ -178,27 +182,18 @@ def main():
         )
         plt.show()
 
-    # TODO Get edge features for g2m
-
-    # Only care about edge features here
-    # grid_con_mesh_lat_lon = mesh_lat_lon_list[0]
-    _, _, g2m_features = gc_mu.get_bipartite_graph_spatial_features(
-        senders_node_lat=grid_lat_lon[:, 0],
-        senders_node_lon=grid_lat_lon[:, 1],
-        senders=g2m_edge_index[0, :],
-        receivers_node_lat=grid_con_mesh_lat_lon[:, 0],
-        receivers_node_lon=grid_con_mesh_lat_lon[:, 1],
-        receivers=g2m_edge_index[1, :],
-        **GC_SPATIAL_FEATURES_KWARGS,
+    # Get edge features for g2m
+    g2m_edge_features = gcreate.create_edge_features(
+        g2m_edge_index, sender_coords=grid_lat_lon, receiver_mesh=grid_con_mesh
     )
-    g2m_features_torch = torch.tensor(g2m_features, dtype=torch.float32)
 
+    # Save g2m
     torch.save(
-        g2m_edge_index_torch,
+        g2m_edge_index,
         os.path.join(args.output_dir, "g2m_edge_index.pt"),
     )
     torch.save(
-        g2m_features_torch,
+        g2m_edge_features,
         os.path.join(args.output_dir, "g2m_features.pt"),
     )
 
