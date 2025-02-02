@@ -36,8 +36,7 @@ def main():
     parser.add_argument(
         "--plot",
         action="store_true",
-        help="If graphs should be plotted during generation "
-        "(default: false)",
+        help="If graphs should be plotted during generation ",
     )
 
     # Graph structure
@@ -84,6 +83,7 @@ def main():
 
     # Concatenate interior and boundary coordinates
     grid_lat_lon = np.concatenate((interior_lat_lon, boundary_lat_lon), axis=0)
+    grid_lat_lon = grid_lat_lon[::1000]  # TODO Remove
     # flattened, (num_grid_nodes, 2)
     num_grid_nodes = grid_lat_lon.shape[0]
 
@@ -115,10 +115,14 @@ def main():
         #  mesh_down_features_list,
         #  os.path.join(args.output_dir, "mesh_down_features.pt"),
         #  )
+        # max_mesh_edge_len = ?
         pass
         # TODO Hierarchical graph
     else:
-        merged_mesh = gcreate.create_multiscale_mesh(args.splits, args.levels)
+        merged_mesh, mesh_list = gcreate.create_multiscale_mesh(
+            args.splits, args.levels
+        )
+        max_mesh_edge_len = gc_gc._get_max_edge_distance(mesh_list[-1])
         m2m_graphs = [merged_mesh]
 
     mesh_graph_features = [
@@ -159,8 +163,6 @@ def main():
 
     # Compute maximum edge distance in finest mesh
     # pylint: disable-next=protected-access
-    # TODO Get distance from finest mesh, even when collapsed to multi-scale
-    max_mesh_edge_len = gc_gc._get_max_edge_distance(m2m_graphs[-1])
     g2m_connect_radius = 0.6 * max_mesh_edge_len
 
     g2m_edge_index = gcreate.connect_to_mesh_radius(

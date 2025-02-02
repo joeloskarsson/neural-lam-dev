@@ -79,9 +79,8 @@ def create_multiscale_mesh(splits, levels):
     mesh_list = _create_mesh_levels(splits, levels)
 
     # Merge meshes
-    # Modify gc code, as this uses some python 3.10 things
+    # Modified gc code, as it uses some python 3.10 things
     for mesh_i, mesh_ip1 in zip(mesh_list[:-1], mesh_list[1:]):
-        # itertools.pairwise(mesh_list):
         num_nodes_mesh_i = mesh_i.vertices.shape[0]
         assert np.allclose(
             mesh_i.vertices, mesh_ip1.vertices[:num_nodes_mesh_i]
@@ -92,7 +91,7 @@ def create_multiscale_mesh(splits, levels):
         faces=np.concatenate([mesh.faces for mesh in mesh_list], axis=0),
     )
 
-    return merged_mesh
+    return merged_mesh, mesh_list
 
 
 def create_hierarchical_mesh(splits, levels):
