@@ -29,8 +29,8 @@ def node_lat_lon_to_cart(node_lat_lon):
 
     NOTE: Based on graphcast.grid_mesh_connectivity._grid_lat_lon_to_coordinates
 
-    node_pos_lat_lon: (N_nodes, 3), cartesian coordinates
-    Returns: (N_nodes, 2), lat-lon coordinates
+    node_pos_lat_lon: (N_nodes, 2), lat-lon coordinates
+    Returns: (N_nodes, 3), cartesian coordinates
     """
     phi_grid = np.deg2rad(node_lat_lon[:, 0])
     theta_grid = np.deg2rad(90 - node_lat_lon[:, 1])

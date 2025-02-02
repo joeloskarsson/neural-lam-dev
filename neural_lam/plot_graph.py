@@ -3,6 +3,7 @@ import os
 from argparse import ArgumentParser
 
 # Third-party
+import cartopy.crs as ccrs
 import numpy as np
 import plotly.graph_objects as go
 import torch_geometric as pyg
@@ -10,6 +11,7 @@ import torch_geometric as pyg
 # Local
 from . import utils
 from .config import load_config_and_datastores
+from .graphs import graph_utils as gutils
 
 
 def main():
@@ -63,21 +65,14 @@ def main():
     )
     mesh_static_features = graph_ldict["mesh_static_features"]
 
-    # Extract values needed, turn to numpy
-    # Now plotting is in the 2d CRS of datastore
-    grid_pos = utils.get_stacked_xy(datastore, datastore_boundary)
-    # (num_nodes_full, 2)
-    grid_scale = np.ptp(grid_pos)
-
-    # Add in z-dimension for grid
-    z_grid = np.zeros((grid_pos.shape[0],))  # Grid sits at z=0
-    grid_pos = np.concatenate(
-        (grid_pos, np.expand_dims(z_grid, axis=1)), axis=1
-    )
+    # Plotting is in 3d, with lat-lons transformed to be on unit sphere
+    grid_lat_lons = utils.get_stacked_lat_lons(datastore, datastore_boundary)
+    grid_pos = gutils.node_lat_lon_to_cart(grid_lat_lons)
+    # (num_nodes_full, 3)
 
     # Compute z-coordinate height of mesh nodes
-    mesh_base_height = 0.05 * grid_scale
-    mesh_level_height_diff = 0.1 * grid_scale
+    mesh_base_height = 1.1
+    mesh_level_height_diff = 0.5
 
     # List of edges to plot, (edge_index, from_pos, to_pos, color,
     # line_width, label)
@@ -100,6 +95,7 @@ def main():
                 mesh_static_features, start=1
             )
         ]
+        # TODO Make lat-lon
         all_mesh_pos = np.concatenate(mesh_level_pos, axis=0)
         grid_con_mesh_pos = mesh_level_pos[0]
 
@@ -177,16 +173,20 @@ def main():
 
         mesh_node_size = 2.5
     else:
-        mesh_pos = mesh_static_features.numpy()
+        # Transform from lam crs to lat-lon
+        # TODO Should this really be done here?
+        # TODO Now these will either be in-proj coords or lat-lons depending
+        # on what kinds of graph was made
+        mesh_proj_pos = mesh_static_features.numpy()
+        mesh_lat_lons = ccrs.PlateCarree().transform_points(
+            datastore.coords_projection,
+            mesh_proj_pos[:, 0],
+            mesh_proj_pos[:, 1],
+        )
+        mesh_pos = gutils.node_lat_lon_to_cart(mesh_lat_lons) * mesh_base_height
 
         mesh_degrees = pyg.utils.degree(m2m_edge_index[1]).numpy()
-        # 1% higher per neighbor
-        z_mesh = (1 + 0.01 * mesh_degrees) * mesh_base_height
         mesh_node_size = mesh_degrees / 2
-
-        mesh_pos = np.concatenate(
-            (mesh_pos, np.expand_dims(z_mesh, axis=1)), axis=1
-        )
 
         edge_plot_list.append(
             (m2m_edge_index.numpy(), mesh_pos, mesh_pos, "blue", 1, "M2M")
@@ -210,8 +210,8 @@ def main():
         width,
         label,
     ) in edge_plot_list:
-        edge_start = from_pos[ei[0]]  # (M, 2)
-        edge_end = to_pos[ei[1]]  # (M, 2)
+        edge_start = from_pos[ei[0]]  # (M, 3)
+        edge_end = to_pos[ei[1]]  # (M, 3)
         n_edges = edge_start.shape[0]
 
         x_edges = np.stack(
