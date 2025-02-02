@@ -1,6 +1,7 @@
 # Third-party
 import numpy as np
 import scipy
+import trimesh
 from graphcast import graphcast as gc_gc
 from graphcast import model_utils as gc_mu
 
@@ -54,7 +55,7 @@ def radius_query_indices_irregular(
 
     NOTE: This is a modified version of graphcast.radius_query_indices that does
     not assume grid coordinates to be on a regular lat-lon grid. It thus
-    directly takes a the lat-lon position of all grid nodes as input
+    directly takes the lat-lon position of all grid nodes as input
 
     Args:
         grid_lat_lon: Lat-lon positions for the grid [num_grid_points, 2]
@@ -93,4 +94,52 @@ def radius_query_indices_irregular(
     grid_edge_indices = np.concatenate(grid_edge_indices, axis=0).astype(int)
     mesh_edge_indices = np.concatenate(mesh_edge_indices, axis=0).astype(int)
 
+    return grid_edge_indices, mesh_edge_indices
+
+
+def in_mesh_triangle_indices_irregular(
+    *,
+    grid_lat_lon: np.ndarray,
+    mesh: gc_gc.icosahedral_mesh.TriangularMesh,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Returns mesh-grid edge indices for grid points contained in mesh
+    triangles.
+    NOTE: This is a modified version of graphcast.in_mesh_triangle_indices
+    that does not assume grid coordinates to be on a regular lat-lon grid. It
+    thus directly takes a the lat-lon position of all grid nodes as input
+
+    Args:
+        grid_lat_lon: Lat-lon positions for the grid [num_grid_points, 2]
+        mesh: Mesh object.
+    Returns:
+        tuple with `grid_indices` and `mesh_indices` indicating edges between
+        the grid and the mesh vertices of the triangle that contain
+        each grid point.
+        The number of edges is always num_grid_points * 3
+        * grid_indices: Indices of shape [num_edges], that index into a
+          [num_grid_points, ...] array of grid positions.
+        * mesh_indices: Indices of shape [num_edges], that index into
+          mesh.vertices.
+    """
+    # [num_grid_points, 3]
+    grid_positions = node_lat_lon_to_cart(grid_lat_lon)
+    mesh_trimesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces)
+
+    # [num_grid_points] with mesh face indices for each grid point.
+    _, _, query_face_indices = trimesh.proximity.closest_point(
+        mesh_trimesh, grid_positions
+    )
+
+    # [num_grid_points, 3] with mesh node indices for each grid point.
+    mesh_edge_indices = mesh.faces[query_face_indices]
+
+    # [num_grid_points, 3] with grid node indices, where every row simply
+    # contains the row (grid_point) index.
+    grid_indices = np.arange(grid_positions.shape[0])
+    grid_edge_indices = np.tile(grid_indices.reshape([-1, 1]), [1, 3])
+
+    # Flatten to get a regular list.
+    # [num_edges=num_grid_points*3]
+    mesh_edge_indices = mesh_edge_indices.reshape([-1])
+    grid_edge_indices = grid_edge_indices.reshape([-1])
     return grid_edge_indices, mesh_edge_indices

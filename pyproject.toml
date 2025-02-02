@@ -34,7 +34,8 @@ dev = ["pre-commit>=3.8.0", "pytest>=8.3.2", "pooch>=1.8.2", "gcsfs>=2021.10.0"]
 graph = [
     "networkx>=3.0",
     "plotly>=5.15.0",
-    "graphcast @ https://github.com/deepmind/graphcast/archive/master.zip"
+    "graphcast @ https://github.com/deepmind/graphcast/archive/master.zip",
+    "trimesh"
 ]
 
 [tool.setuptools]

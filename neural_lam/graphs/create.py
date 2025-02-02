@@ -3,7 +3,6 @@ import numpy as np
 import scipy
 import torch
 from graphcast import graphcast as gc_gc
-from graphcast import grid_mesh_connectivity as gc_gm
 from graphcast import icosahedral_mesh as gc_im
 from graphcast import model_utils as gc_mu
 
@@ -157,7 +156,7 @@ def create_hierarchical_mesh(splits, levels):
 
 def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
     """
-    Connect edge_index that connects given grid positions to mesh, if within
+    Create edge_index that connects given grid positions to mesh, if within
     specific radius of mesh node.
 
     grid_pos: (num_grid_nodes, 2) np.array containing lat-lons of grid nodes
@@ -173,6 +172,28 @@ def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
 
     # Stacking order to have from grid to mesh
     edge_index = np.stack(grid_mesh_indices, axis=0)
+    edge_index_torch = torch.tensor(edge_index, dtype=torch.long)
+    return edge_index_torch
+
+
+def connect_to_grid_containing_tri(grid_pos, mesh: gc_im.TriangularMesh):
+    """
+    Create edge_index by for each grid node finding the containing triangle
+    in the mesh and creating edges from the corner nodes to the grid node.
+
+    grid_pos: (num_grid_nodes, 2) np.array containing lat-lons of grid nodes
+    mesh: TriangularMesh, the mesh to connect from
+    """
+
+    grid_mesh_indices = gutils.in_mesh_triangle_indices_irregular(
+        grid_lat_lon=grid_pos,
+        mesh=mesh,
+    )
+
+    # Note: Still returned in order (grid, mesh), need to inverse
+    edge_index = np.stack(grid_mesh_indices[::-1], axis=0)
+
+    # Make torch tensor
     edge_index_torch = torch.tensor(edge_index, dtype=torch.long)
     return edge_index_torch
 

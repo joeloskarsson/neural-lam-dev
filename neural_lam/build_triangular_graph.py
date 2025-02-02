@@ -198,39 +198,37 @@ def main():
     )
 
     # === Mesh2Grid ===
-    # Mesh2Grid: Connect to containing mesh triangle
-    m2g_grid_mesh_indices = gc_gm.in_mesh_triangle_indices(
-        grid_latitude=grid_lat,
-        grid_longitude=grid_lon,
-        mesh=mesh_list[-1],
-    )  # Note: Still returned in order (grid, mesh), need to inverse
-    m2g_edge_index = np.stack(m2g_grid_mesh_indices[::-1], axis=0)
-    m2g_edge_index_torch = torch.tensor(m2g_edge_index, dtype=torch.long)
-    # Grid index fix
-    m2g_edge_index_torch[1] = grid_index_map[m2g_edge_index_torch[1]]
+    # Mesh2Grid: Connect from containing mesh triangle
 
-    # Only care about edge features here
-    _, _, m2g_features = gc_mu.get_bipartite_graph_spatial_features(
-        senders_node_lat=grid_con_mesh_lat_lon[:, 0],
-        senders_node_lon=grid_con_mesh_lat_lon[:, 1],
-        senders=m2g_edge_index[0, :],
-        receivers_node_lat=grid_lat_lon[:, 0],
-        receivers_node_lon=grid_lat_lon[:, 1],
-        receivers=m2g_edge_index[1, :],
-        **GC_SPATIAL_FEATURES_KWARGS,
+    m2g_edge_index = gcreate.connect_to_grid_containing_tri(
+        grid_lat_lon, grid_con_mesh
     )
-    m2g_features_torch = torch.tensor(m2g_features, dtype=torch.float32)
 
+    # Get edge features for m2g
+    m2g_edge_features = gcreate.create_edge_features(
+        m2g_edge_index, receiver_coords=grid_lat_lon, sender_mesh=grid_con_mesh
+    )
+
+    if args.plot:
+        gvis.plot_graph(
+            m2g_edge_index,
+            from_node_pos=grid_con_lat_lon,
+            to_node_pos=grid_lat_lon_torch,
+            title="Grid2Mesh",
+        )
+        plt.show()
+
+    # Save m2g
     torch.save(
-        m2g_edge_index_torch,
+        m2g_edge_index,
         os.path.join(args.output_dir, "m2g_edge_index.pt"),
     )
     torch.save(
-        m2g_features_torch,
+        m2g_edge_features,
         os.path.join(args.output_dir, "m2g_features.pt"),
     )
 
-    num_mesh_nodes = grid_con_mesh_lat_lon.shape[0]
+    num_mesh_nodes = grid_con_lat_lon.shape[0]
     print(
         f"Created graph with {num_grid_nodes} grid nodes "
         f"connected to {num_mesh_nodes}"
