@@ -152,6 +152,10 @@ def main():
 
     # Compute maximum edge distance in finest mesh
     # pylint: disable-next=protected-access
+    print(
+        f"Edge length at bottom mesh level: {max_mesh_edge_len} "
+        f"(~{max_mesh_edge_len*6378} km)"
+    )
     g2m_connect_radius = 0.6 * max_mesh_edge_len
 
     g2m_edge_index = gcreate.connect_to_mesh_radius(
