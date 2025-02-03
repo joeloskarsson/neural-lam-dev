@@ -3,6 +3,7 @@ from typing import Union
 
 # Third-party
 import torch
+from torch import nn
 
 # Local
 from .. import utils
@@ -59,6 +60,13 @@ class BaseGraphModel(ARModel):
             f"{self.num_mesh_nodes} mesh)"
         )
 
+        # Determine grid hidden dim
+        if args.hidden_dim_grid is None:
+            # Same as hidden_dim
+            hidden_dim_grid = args.hidden_dim
+        else:
+            hidden_dim_grid = args.hidden_dim_grid
+
         # interior_dim from data + static
         self.g2m_edges, g2m_dim = self.g2m_features.shape
         self.m2g_edges, m2g_dim = self.m2g_features.shape
@@ -66,8 +74,10 @@ class BaseGraphModel(ARModel):
         # Define sub-models
         # Feature embedders for interior
         self.mlp_blueprint_end = [args.hidden_dim] * (args.hidden_layers + 1)
+        # For grid hidden dim
+        grid_mlp_blueprint_end = [hidden_dim_grid] * (args.hidden_layers + 1)
         self.interior_embedder = utils.make_mlp(
-            [self.interior_dim] + self.mlp_blueprint_end
+            [self.interior_dim] + grid_mlp_blueprint_end
         )
 
         if self.boundary_forced:
@@ -83,8 +93,16 @@ class BaseGraphModel(ARModel):
                 self.boundary_embedder = self.interior_embedder
             else:
                 self.boundary_embedder = utils.make_mlp(
-                    [self.boundary_dim] + self.mlp_blueprint_end
+                    [self.boundary_dim] + grid_mlp_blueprint_end
                 )
+
+        # Upwards projection from grid dim to hidden dim before g2m
+        self.grid_up_proj_g2m = nn.Sequential(
+            nn.SiLU(), nn.Linear(hidden_dim_grid, args.hidden_dim)
+        )
+        self.grid_up_proj_m2g = nn.Sequential(
+            nn.SiLU(), nn.Linear(hidden_dim_grid, args.hidden_dim)
+        )
 
         self.g2m_embedder = utils.make_mlp([g2m_dim] + self.mlp_blueprint_end)
         self.m2g_embedder = utils.make_mlp([m2g_dim] + self.mlp_blueprint_end)
@@ -99,7 +117,7 @@ class BaseGraphModel(ARModel):
             num_rec=self.num_grid_connected_mesh_nodes,
         )
         self.encoding_grid_mlp = utils.make_mlp(
-            [args.hidden_dim] + self.mlp_blueprint_end
+            [hidden_dim_grid] + grid_mlp_blueprint_end
         )
 
         # decoder
@@ -113,7 +131,8 @@ class BaseGraphModel(ARModel):
 
         # Output mapping (hidden_dim -> output_dim)
         self.output_map = utils.make_mlp(
-            [args.hidden_dim] * (args.hidden_layers + 1)
+            [args.hidden_dim]
+            + [hidden_dim_grid] * args.hidden_layers
             + [self.grid_output_dim],
             layer_norm=False,
         )  # No layer norm on this one
@@ -417,6 +436,10 @@ class BaseGraphModel(ARModel):
             # Only maps from interior to mesh
             full_grid_emb = interior_emb
 
+        # Project up from hidden grid dimension to hidden dim of mesh
+        # Required for using as input to g2m
+        full_grid_emb_projected = self.grid_up_proj_g2m(full_grid_emb)
+
         # Map from grid to mesh
         mesh_emb_expanded = self.expand_to_batch(
             mesh_emb, batch_size
@@ -425,7 +448,7 @@ class BaseGraphModel(ARModel):
 
         # Encode to mesh
         mesh_rep = self.g2m_gnn(
-            full_grid_emb, mesh_emb_expanded, g2m_emb_expanded
+            full_grid_emb_projected, mesh_emb_expanded, g2m_emb_expanded
         )  # (B, num_mesh_nodes, d_h)
         # Also MLP with residual for grid representation
         grid_rep = interior_emb + self.encoding_grid_mlp(
@@ -435,10 +458,13 @@ class BaseGraphModel(ARModel):
         # Run processor step
         mesh_rep = self.process_step(mesh_rep)
 
+        # Project up from grid_rep to hidden_dim of mesh, for m2g
+        grid_rep_projected = self.grid_up_proj_m2g(grid_rep)
+
         # Map back from mesh to grid
         m2g_emb_expanded = self.expand_to_batch(m2g_emb, batch_size)
         grid_rep = self.m2g_gnn(
-            mesh_rep, grid_rep, m2g_emb_expanded
+            mesh_rep, grid_rep_projected, m2g_emb_expanded
         )  # (B, num_interior_nodes, d_h)
 
         # Map to output dimension, only for grid
