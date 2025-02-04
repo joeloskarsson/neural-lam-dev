@@ -75,9 +75,11 @@ class BaseGraphModel(ARModel):
         # Feature embedders for interior
         self.mlp_blueprint_end = [args.hidden_dim] * (args.hidden_layers + 1)
         # For grid hidden dim
-        grid_mlp_blueprint_end = [hidden_dim_grid] * (args.hidden_layers + 1)
+        self.grid_mlp_blueprint_end = [hidden_dim_grid] * (
+            args.hidden_layers + 1
+        )
         self.interior_embedder = utils.make_mlp(
-            [self.interior_dim] + grid_mlp_blueprint_end
+            [self.interior_dim] + self.grid_mlp_blueprint_end
         )
 
         if self.boundary_forced:
@@ -93,37 +95,41 @@ class BaseGraphModel(ARModel):
                 self.boundary_embedder = self.interior_embedder
             else:
                 self.boundary_embedder = utils.make_mlp(
-                    [self.boundary_dim] + grid_mlp_blueprint_end
+                    [self.boundary_dim] + self.grid_mlp_blueprint_end
                 )
 
-        # Upwards projection from grid dim to hidden dim before g2m
-        self.grid_up_proj_g2m = nn.Sequential(
+        # Projections between grid dim and hidden dim before and after processor
+        self.pre_mesh_proj = nn.Sequential(
             nn.SiLU(), nn.Linear(hidden_dim_grid, args.hidden_dim)
         )
-        self.grid_up_proj_m2g = nn.Sequential(
-            nn.SiLU(), nn.Linear(hidden_dim_grid, args.hidden_dim)
+        self.post_mesh_proj = nn.Sequential(
+            nn.SiLU(), nn.Linear(args.hidden_dim, hidden_dim_grid)
         )
 
-        self.g2m_embedder = utils.make_mlp([g2m_dim] + self.mlp_blueprint_end)
-        self.m2g_embedder = utils.make_mlp([m2g_dim] + self.mlp_blueprint_end)
+        self.g2m_embedder = utils.make_mlp(
+            [g2m_dim] + self.grid_mlp_blueprint_end
+        )
+        self.m2g_embedder = utils.make_mlp(
+            [m2g_dim] + self.grid_mlp_blueprint_end
+        )
 
         # GNNs
         # encoder
         self.g2m_gnn = InteractionNet(
             self.g2m_edge_index,
-            args.hidden_dim,
+            hidden_dim_grid,
             hidden_layers=args.hidden_layers,
             update_edges=False,
             num_rec=self.num_grid_connected_mesh_nodes,
         )
         self.encoding_grid_mlp = utils.make_mlp(
-            [hidden_dim_grid] + grid_mlp_blueprint_end
+            [hidden_dim_grid] + self.grid_mlp_blueprint_end
         )
 
         # decoder
         self.m2g_gnn = InteractionNet(
             self.m2g_edge_index,
-            args.hidden_dim,
+            hidden_dim_grid,
             hidden_layers=args.hidden_layers,
             update_edges=False,
             num_rec=self.num_interior_nodes,
@@ -131,7 +137,7 @@ class BaseGraphModel(ARModel):
 
         # Output mapping (hidden_dim -> output_dim)
         self.output_map = utils.make_mlp(
-            [args.hidden_dim]
+            [hidden_dim_grid]
             + [hidden_dim_grid] * args.hidden_layers
             + [self.grid_output_dim],
             layer_norm=False,
@@ -436,10 +442,6 @@ class BaseGraphModel(ARModel):
             # Only maps from interior to mesh
             full_grid_emb = interior_emb
 
-        # Project up from hidden grid dimension to hidden dim of mesh
-        # Required for using as input to g2m
-        full_grid_emb_projected = self.grid_up_proj_g2m(full_grid_emb)
-
         # Map from grid to mesh
         mesh_emb_expanded = self.expand_to_batch(
             mesh_emb, batch_size
@@ -448,23 +450,26 @@ class BaseGraphModel(ARModel):
 
         # Encode to mesh
         mesh_rep = self.g2m_gnn(
-            full_grid_emb_projected, mesh_emb_expanded, g2m_emb_expanded
+            full_grid_emb, mesh_emb_expanded, g2m_emb_expanded
         )  # (B, num_mesh_nodes, d_h)
         # Also MLP with residual for grid representation
         grid_rep = interior_emb + self.encoding_grid_mlp(
             interior_emb
         )  # (B, num_interior_nodes, d_h)
 
+        # Project up mesh rep to hidden dim of graph
+        mesh_rep = self.pre_mesh_proj(mesh_rep)
+
         # Run processor step
         mesh_rep = self.process_step(mesh_rep)
 
-        # Project up from grid_rep to hidden_dim of mesh, for m2g
-        grid_rep_projected = self.grid_up_proj_m2g(grid_rep)
+        # Project down mesh rep to hidden dim of grid
+        mesh_rep = self.post_mesh_proj(mesh_rep)
 
         # Map back from mesh to grid
         m2g_emb_expanded = self.expand_to_batch(m2g_emb, batch_size)
         grid_rep = self.m2g_gnn(
-            mesh_rep, grid_rep_projected, m2g_emb_expanded
+            mesh_rep, grid_rep, m2g_emb_expanded
         )  # (B, num_interior_nodes, d_h)
 
         # Map to output dimension, only for grid
