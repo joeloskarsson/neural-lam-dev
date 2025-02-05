@@ -186,7 +186,17 @@ def plot_spatial_error(
 ):
     """
     Plot errors over spatial map
+
+    Args:
+        error (torch.Tensor): Error tensor
+        datastore (BaseRegularGridDatastore): Datastore object
+        title (str): Title of the plot
+        vrange (tuple): Range of values for colorbar
+
+    Returns:
+        matplotlib.figure.Figure: Matplotlib figure object
     """
+    # Get common scale for values
     if vrange is None:
         vmin = error.min().cpu().item()
         vmax = error.max().cpu().item()
@@ -203,7 +213,7 @@ def plot_spatial_error(
             datastore.grid_shape_state.x,
             datastore.grid_shape_state.y,
         ])
-        .T.cpu()
+        .cpu()
         .numpy()
     )
 
