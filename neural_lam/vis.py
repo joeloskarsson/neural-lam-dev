@@ -16,7 +16,15 @@ def plot_error_map(errors, datastore: BaseRegularGridDatastore, title=None):
     """
     Plot a heatmap of errors of different variables at different
     predictions horizons
-    errors: (pred_steps, d_f)
+
+    Args:
+        errors (torch.Tensor): (d_f, pred_steps) tensor of errors
+        datastore (BaseRegularGridDatastore): Datastore object
+        title (str): Title of the plot
+
+    Returns:
+        matplotlib.figure.Figure: Matplotlib figure object
+
     """
     errors_np = errors.T.cpu().numpy()  # (d_f, pred_steps)
     d_f, pred_steps = errors_np.shape
@@ -70,29 +78,52 @@ def plot_on_axis(
     ax,
     da,
     datastore,
-    obs_mask=None,
     vmin=None,
     vmax=None,
     ax_title=None,
     cmap="plasma",
-    grid_limits=None,
 ):
     """
     Plot weather state on given axis
+
+    Args:
+        ax (matplotlib.axes.Axes): Axis object
+        da (xr.DataArray): DataArray to plot
+        datastore (BaseRegularGridDatastore): Datastore object
+        vmin (float): Minimum value for colorbar
+        vmax (float): Maximum value for colorbar
+        ax_title (str): Title of the axis
+        cmap (str): Colormap to use
+
+    Returns:
+        matplotlib.collections.QuadMesh: QuadMesh object
     """
-    ax.coastlines()  # Add coastline outlines
+    ax.coastlines(resolution="50m")
+    ax.add_feature(cfeature.BORDERS, linestyle="-", alpha=0.5)
 
-    extent = datastore.get_xy_extent("state")
+    gl = ax.gridlines(
+        draw_labels=True, dms=True, x_inline=False, y_inline=False
+    )
+    gl.top_labels = False
+    gl.right_labels = False
 
-    im = da.plot.imshow(
-        ax=ax,
-        origin="lower",
-        x="x",
-        extent=extent,
+    lats_lons = datastore.get_lat_lon("state")
+    grid_shape = (
+        datastore.grid_shape_state.x,
+        datastore.grid_shape_state.y,
+    )
+    lons = lats_lons[:, 0].reshape(grid_shape)
+    lats = lats_lons[:, 1].reshape(grid_shape)
+
+    im = ax.pcolormesh(
+        lons,
+        lats,
+        da.values.reshape(grid_shape),
+        transform=ccrs.PlateCarree(),
         vmin=vmin,
         vmax=vmax,
         cmap=cmap,
-        transform=datastore.coords_projection,
+        shading="auto",
     )
 
     if ax_title:
@@ -112,20 +143,16 @@ def plot_prediction(
     """
     Plot example prediction and ground truth with proper map projection.
 
-    Parameters
-    ----------
-    datastore : BaseRegularGridDatastore
-        The datastore containing coordinate information
-    da_prediction : xr.DataArray
-        Model prediction data
-    da_target : xr.DataArray
-        Ground truth data
-    title : str, optional
-        Plot title
-    vrange : tuple, optional
-        Value range for colormap (vmin, vmax)
+    Args:
+        datastore (BaseRegularGridDatastore): Datastore object
+        da_prediction (xr.DataArray): Prediction to plot
+        da_target (xr.DataArray): Ground truth to plot
+        title (str): Title of the plot
+        vrange (tuple): Range of values for colorbar
+
+    Returns:
+        matplotlib.figure.Figure: Matplotlib figure object
     """
-    # Get common scale for values
     if vrange is None:
         vmin = min(da_prediction.min(), da_target.min())
         vmax = max(da_prediction.max(), da_target.max())
@@ -139,49 +166,16 @@ def plot_prediction(
         subplot_kw={"projection": datastore.coords_projection},
     )
 
-    # Get lat/lon coordinates and reshape using grid shape tuple
-    lats_lons = datastore.get_lat_lon("state")
-    grid_shape = (
-        datastore.grid_shape_state.x,
-        datastore.grid_shape_state.y,
-    )
-    lons = lats_lons[:, 0].reshape(grid_shape)
-    lats = lats_lons[:, 1].reshape(grid_shape)
-
-    # Plot target and prediction
     for ax, da, subtitle in zip(
         axes, (da_target, da_prediction), ("Ground Truth", "Prediction")
     ):
-        # Add map features
-        ax.coastlines(resolution="50m")
-        ax.add_feature(cfeature.BORDERS, linestyle="-", alpha=0.5)
-
-        # Add gridlines
-        gl = ax.gridlines(
-            draw_labels=True, dms=True, x_inline=False, y_inline=False
-        )
-        gl.top_labels = False
-        gl.right_labels = False
-
-        # Plot data - reshape data using same grid shape
-        im = ax.pcolormesh(
-            lons,
-            lats,
-            da.values.reshape(grid_shape),
-            transform=ccrs.PlateCarree(),
-            vmin=vmin,
-            vmax=vmax,
-            cmap="viridis",
-            shading="auto",
-        )
-        ax.set_title(subtitle, size=15)
+        plot_on_axis(ax, da, datastore, vmin, vmax, subtitle, cmap="viridis")
 
     if title:
         fig.suptitle(title, size=20)
 
-    # Add colorbar at bottom
     cbar_ax = fig.add_axes([0.2, 0.05, 0.6, 0.03])
-    fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
+    fig.colorbar(axes[0].collections[0], cax=cbar_ax, orientation="horizontal")
 
     return fig
 
@@ -192,9 +186,7 @@ def plot_spatial_error(
 ):
     """
     Plot errors over spatial map
-    Error and obs_mask has shape (N_grid,)
     """
-    # Get common scale for values
     if vrange is None:
         vmin = error.min().cpu().item()
         vmax = error.max().cpu().item()
@@ -207,28 +199,18 @@ def plot_spatial_error(
     )
 
     error_grid = (
-        error.reshape(
-            [
-                datastore.grid_shape_state.x,
-                datastore.grid_shape_state.y,
-            ]
-        )
+        error.reshape([
+            datastore.grid_shape_state.x,
+            datastore.grid_shape_state.y,
+        ])
         .T.cpu()
         .numpy()
     )
-    extent = datastore.get_xy_extent("state")
 
-    # TODO: This needs to be converted to DA and use plot_on_axis
-    im = ax.imshow(
-        error_grid,
-        origin="lower",
-        extent=extent,
-        vmin=vmin,
-        vmax=vmax,
-        cmap="OrRd",
+    im = plot_on_axis(
+        ax, xr.DataArray(error_grid), datastore, vmin, vmax, cmap="OrRd"
     )
 
-    # Ticks and labels
     cbar = fig.colorbar(im, aspect=30)
     cbar.ax.tick_params(labelsize=10)
     cbar.ax.yaxis.get_offset_text().set_fontsize(10)
