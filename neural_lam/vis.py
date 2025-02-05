@@ -1,4 +1,6 @@
 # Third-party
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -108,10 +110,20 @@ def plot_prediction(
     vrange=None,
 ):
     """
-    Plot example prediction and grond truth.
+    Plot example prediction and ground truth with proper map projection.
 
-    Each has shape (N_grid,)
-
+    Parameters
+    ----------
+    datastore : BaseRegularGridDatastore
+        The datastore containing coordinate information
+    da_prediction : xr.DataArray
+        Model prediction data
+    da_target : xr.DataArray
+        Ground truth data
+    title : str, optional
+        Plot title
+    vrange : tuple, optional
+        Value range for colormap (vmin, vmax)
     """
     # Get common scale for values
     if vrange is None:
@@ -127,22 +139,49 @@ def plot_prediction(
         subplot_kw={"projection": datastore.coords_projection},
     )
 
-    # Plot pred and target
-    for ax, da in zip(axes, (da_target, da_prediction)):
-        plot_on_axis(
-            ax,
-            da,
-            datastore,
+    # Get lat/lon coordinates and reshape using grid shape tuple
+    lats_lons = datastore.get_lat_lon("state")
+    grid_shape = (
+        datastore.grid_shape_state.x,
+        datastore.grid_shape_state.y,
+    )
+    lons = lats_lons[:, 0].reshape(grid_shape)
+    lats = lats_lons[:, 1].reshape(grid_shape)
+
+    # Plot target and prediction
+    for ax, da, subtitle in zip(
+        axes, (da_target, da_prediction), ("Ground Truth", "Prediction")
+    ):
+        # Add map features
+        ax.coastlines(resolution="50m")
+        ax.add_feature(cfeature.BORDERS, linestyle="-", alpha=0.5)
+
+        # Add gridlines
+        gl = ax.gridlines(
+            draw_labels=True, dms=True, x_inline=False, y_inline=False
+        )
+        gl.top_labels = False
+        gl.right_labels = False
+
+        # Plot data - reshape data using same grid shape
+        im = ax.pcolormesh(
+            lons,
+            lats,
+            da.values.reshape(grid_shape),
+            transform=ccrs.PlateCarree(),
             vmin=vmin,
             vmax=vmax,
+            cmap="viridis",
+            shading="auto",
         )
-
-    # Ticks and labels
-    axes[0].set_title("Ground Truth", size=15)
-    axes[1].set_title("Prediction", size=15)
+        ax.set_title(subtitle, size=15)
 
     if title:
         fig.suptitle(title, size=20)
+
+    # Add colorbar at bottom
+    cbar_ax = fig.add_axes([0.2, 0.05, 0.6, 0.03])
+    fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
 
     return fig
 
@@ -169,7 +208,10 @@ def plot_spatial_error(
 
     error_grid = (
         error.reshape(
-            [datastore.grid_shape_state.x, datastore.grid_shape_state.y]
+            [
+                datastore.grid_shape_state.x,
+                datastore.grid_shape_state.y,
+            ]
         )
         .T.cpu()
         .numpy()
