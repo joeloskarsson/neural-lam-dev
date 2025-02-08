@@ -6,6 +6,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 import cartopy.crs as ccrs
 import numpy as np
 import plotly.graph_objects as go
+from PIL import Image
 
 # Local
 from . import utils
@@ -13,6 +14,59 @@ from .config import load_config_and_datastores
 from .graphs import graph_utils as gutils
 
 GRID_RADIUS = 1
+
+
+def make_earth(radius, resolution_reduction=1.0):
+    """
+    Plotly earth from
+    https://community.plotly.com/t/applying-full-color-image-texture-to-create-an-interactive-earth-globe/60166
+
+    radius: radius of earth in plot
+    resolution: float, percentage of full resolution
+    """
+    earth_colorscale = [
+        [0.0, "rgb(30, 59, 117)"],
+        [0.1, "rgb(46, 68, 21)"],
+        [0.2, "rgb(74, 96, 28)"],
+        [0.3, "rgb(115,141,90)"],
+        [0.4, "rgb(122, 126, 75)"],
+        [0.6, "rgb(122, 126, 75)"],
+        [0.7, "rgb(141,115,96)"],
+        [0.8, "rgb(223, 197, 170)"],
+        [0.9, "rgb(237,214,183)"],
+        [1.0, "rgb(255, 255, 255)"],
+    ]
+    texture_path = "figures/earth_texture.jpeg"
+    img = Image.open(texture_path)
+
+    # Calculate new width to maintain aspect ratio
+    new_width = int(img.width * resolution_reduction)
+    new_height = int(img.height * resolution_reduction)
+
+    # Resize image preserving aspect ratio
+    img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    texture = np.asarray(img_resized).T
+
+    N_lon = int(texture.shape[0])
+    N_lat = int(texture.shape[1])
+    theta = np.linspace(-np.pi, np.pi, N_lon)
+    phi = np.linspace(0, np.pi, N_lat)
+
+    # Set up coordinates for points on the sphere
+    x0 = radius * np.outer(np.cos(theta), np.sin(phi))
+    y0 = radius * np.outer(np.sin(theta), np.sin(phi))
+    z0 = radius * np.outer(np.ones(N_lon), np.cos(phi))
+
+    return go.Surface(
+        x=x0,
+        y=y0,
+        z=z0,
+        surfacecolor=texture,
+        colorscale=earth_colorscale,
+        name="Earth",
+        showscale=False,
+        showlegend=True,
+    )
 
 
 def create_edge_plot(
@@ -162,6 +216,14 @@ def main():
         type=str,
         default="blue",
         help="Color of mesh nodes and edges",
+    )
+    # Earth
+    parser.add_argument(
+        "--texture_resolution",
+        type=float,
+        default=0.5,
+        help="Resolution of texture on earth, 1.0 is full resolution "
+        "(high resolution can be slow)",
     )
 
     args = parser.parse_args()
@@ -365,6 +427,11 @@ def main():
             from_radius=mesh_radius,
             to_radius=GRID_RADIUS,
         )
+    )
+
+    # Plot earth
+    data_objs.append(
+        make_earth(radius=1, resolution_reduction=args.texture_resolution)
     )
 
     fig = go.Figure(data=data_objs)
