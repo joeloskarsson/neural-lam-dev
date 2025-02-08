@@ -73,7 +73,6 @@ def main():
     ).astype(
         np.float32
     )  # Must be float32 for interoperability with gc code
-    grid_lat_lon = grid_lat_lon[::1000]  # TODO Remove
     # (num_nodes_full, 2)
     num_grid_nodes = grid_lat_lon.shape[0]
 
@@ -125,7 +124,7 @@ def main():
         (
             "m2m_edge_index.pt",
             "mesh_features.pt",
-            "m2m_features.pt",
+            "m2m_node_features.pt",
             "mesh_lat_lon.pt",
         )
     ):
@@ -220,7 +219,7 @@ def main():
     num_mesh_nodes = grid_con_lat_lon.shape[0]
     print(
         f"Created graph with {num_grid_nodes} grid nodes "
-        f"connected to {num_mesh_nodes}"
+        f"connected to {num_mesh_nodes} mesh nodes"
     )
     print(f"#grid / #mesh = {num_grid_nodes/num_mesh_nodes :.2f}")
 

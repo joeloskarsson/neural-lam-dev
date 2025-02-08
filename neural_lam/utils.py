@@ -107,6 +107,9 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
             weights_only=True,
         )
 
+    # Tri-graph saves additional mesh lat_lon file
+    tri_graph = os.path.isfile(os.path.join(graph_dir_path, "mesh_lat_lon.pt"))
+
     # Load static node features
     mesh_static_features = loads_file(
         "m2m_node_features.pt"
@@ -124,45 +127,50 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     # m2g and g2m has to be handled specially as not all mesh nodes
     # might be indexed
     m2g_min_indices = m2g_edge_index.min(dim=1, keepdim=True)[0]
-    if m2g_min_indices[0] < m2g_min_indices[1]:
-        # mesh has the first indices
-        # Number of mesh nodes at level that connects to grid
-        num_mesh_nodes = mesh_static_features[0].shape[0]
 
-        m2g_edge_index = torch.stack(
-            (
-                m2g_edge_index[0],
-                m2g_edge_index[1] - num_mesh_nodes,
-            ),
-            dim=0,
-        )
-        g2m_edge_index = torch.stack(
-            (
-                g2m_edge_index[0] - num_mesh_nodes,
-                g2m_edge_index[1],
-            ),
-            dim=0,
-        )
-    else:
-        # grid (interior) has the first indices
-        # NOTE: Below works, but would be good with a better way to get this
-        num_interior_nodes = m2g_edge_index[1].max() + 1
-        num_grid_nodes = g2m_edge_index[0].max() + 1
+    if not tri_graph:
+        # Rect graph, need to zero-index g2m and m2g edge_index
+        if m2g_min_indices[0] < m2g_min_indices[1]:
+            # mesh has the first indices
+            # Number of mesh nodes at level that connects to grid
+            num_mesh_nodes = mesh_static_features[0].shape[0]
 
-        m2g_edge_index = torch.stack(
-            (
-                m2g_edge_index[0] - num_interior_nodes,
-                m2g_edge_index[1],
-            ),
-            dim=0,
-        )
-        g2m_edge_index = torch.stack(
-            (
-                g2m_edge_index[0],
-                g2m_edge_index[1] - num_grid_nodes,
-            ),
-            dim=0,
-        )
+            m2g_edge_index = torch.stack(
+                (
+                    m2g_edge_index[0],
+                    m2g_edge_index[1] - num_mesh_nodes,
+                ),
+                dim=0,
+            )
+            g2m_edge_index = torch.stack(
+                (
+                    g2m_edge_index[0] - num_mesh_nodes,
+                    g2m_edge_index[1],
+                ),
+                dim=0,
+            )
+        else:
+            # grid (interior) has the first indices
+            # NOTE: Below works, but would be good with a better way to get this
+            num_interior_nodes = m2g_edge_index[1].max() + 1
+            num_grid_nodes = g2m_edge_index[0].max() + 1
+
+            m2g_edge_index = torch.stack(
+                (
+                    m2g_edge_index[0] - num_interior_nodes,
+                    m2g_edge_index[1],
+                ),
+                dim=0,
+            )
+            g2m_edge_index = torch.stack(
+                (
+                    g2m_edge_index[0],
+                    g2m_edge_index[1] - num_grid_nodes,
+                ),
+                dim=0,
+            )
+    assert m2g_edge_index.min() >= 0, "Negative node index in m2g"
+    assert g2m_edge_index.min() >= 0, "Negative node index in g2m"
 
     n_levels = len(m2m_edge_index)
     hierarchical = n_levels > 1  # Nor just single level mesh graph
@@ -191,17 +199,21 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     ), "Inconsistent number of levels in mesh"
 
     # Get lat-lons
-    mesh_lat_lon = [
-        torch.tensor(
-            ccrs.PlateCarree().transform_points(
-                datastore.coords_projection,
-                mesh_coords[:, 0].numpy(),
-                mesh_coords[:, 1].numpy(),
-            ),
-            dtype=torch.float32,
-        )
-        for mesh_coords in mesh_static_features
-    ]
+    if tri_graph:
+        # Saved lat-lon, from triangular graph
+        mesh_lat_lon = loads_file("mesh_lat_lon.pt")
+    else:
+        mesh_lat_lon = [
+            torch.tensor(
+                ccrs.PlateCarree().transform_points(
+                    datastore.coords_projection,
+                    mesh_coords[:, 0].numpy(),
+                    mesh_coords[:, 1].numpy(),
+                ),
+                dtype=torch.float32,
+            )
+            for mesh_coords in mesh_static_features
+        ]
 
     if hierarchical:
         # Load up and down edges and features
