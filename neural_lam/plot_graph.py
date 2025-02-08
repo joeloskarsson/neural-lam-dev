@@ -120,6 +120,24 @@ def main():
         default=0.3,
         help="Distance between mesh levels",
     )
+    parser.add_argument(
+        "--edge_width",
+        type=float,
+        default=0.4,
+        help="Width of edges",
+    )
+    parser.add_argument(
+        "--grid_node_size",
+        type=float,
+        default=1.0,
+        help="Size of grid nodes",
+    )
+    parser.add_argument(
+        "--mesh_node_size",
+        type=float,
+        default=2.5,
+        help="Size of mesh nodes",
+    )
     # Colors
     parser.add_argument(
         "--g2m_color",
@@ -181,6 +199,7 @@ def main():
             "Grid Nodes",
             color=args.grid_color,
             radius=GRID_RADIUS,
+            size=args.grid_node_size,
         )
     )
 
@@ -226,6 +245,7 @@ def main():
                     f"Mesh level {bot_level_i} nodes",
                     color=args.mesh_color,
                     radius=bot_radius,
+                    size=args.mesh_node_size,
                 )
             )
             # Intra-level edges at bottom level
@@ -236,7 +256,7 @@ def main():
                     bot_pos,
                     f"Mesh level {bot_level_i} edges",
                     color=args.mesh_color,
-                    width=0.4,
+                    width=args.edge_width,
                     from_radius=bot_radius,
                     to_radius=bot_radius,
                 )
@@ -257,7 +277,7 @@ def main():
                         top_pos,
                         f"Mesh up {bot_level_i}->{top_level_i} edges",
                         color=args.mesh_color,
-                        width=0.4,
+                        width=args.edge_width,
                         from_radius=bot_radius,
                         to_radius=top_radius,
                     )
@@ -270,7 +290,7 @@ def main():
                         bot_pos,
                         f"Mesh up {top_level_i}->{bot_level_i} edges",
                         color=args.mesh_color,
-                        width=0.4,
+                        width=args.edge_width,
                         from_radius=top_radius,
                         to_radius=bot_radius,
                     )
@@ -299,9 +319,9 @@ def main():
             create_node_plot(
                 mesh_lat_lon,
                 "Mesh Nodes",
-                size=2.5,
                 radius=mesh_radius,
                 color=args.mesh_color,
+                size=args.mesh_node_size,
             )
         )
         data_objs.append(
@@ -313,6 +333,7 @@ def main():
                 from_radius=mesh_radius,
                 to_radius=mesh_radius,
                 color=args.mesh_color,
+                width=args.edge_width,
             )
         )
 
@@ -326,7 +347,7 @@ def main():
             grid_con_lat_lon,
             "G2M Edges",
             color=args.g2m_color,
-            width=0.4,
+            width=args.edge_width,
             from_radius=GRID_RADIUS,
             to_radius=mesh_radius,
         )
@@ -340,7 +361,7 @@ def main():
             grid_lat_lon,
             "M2G Edges",
             color=args.m2g_color,
-            width=0.4,
+            width=args.edge_width,
             from_radius=mesh_radius,
             to_radius=GRID_RADIUS,
         )
