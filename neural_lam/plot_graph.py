@@ -6,7 +6,6 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 import cartopy.crs as ccrs
 import numpy as np
 import plotly.graph_objects as go
-import torch_geometric as pyg
 
 # Local
 from . import utils
@@ -163,26 +162,14 @@ def main():
     )
     hierarchical, graph_ldict = utils.load_graph(graph_dir_path=graph_dir_path)
     # Turn all to numpy
-    (g2m_edge_index, m2g_edge_index, m2m_edge_index,) = (
+    (g2m_edge_index, m2g_edge_index) = (
         graph_ldict["g2m_edge_index"].numpy(),
         graph_ldict["m2g_edge_index"].numpy(),
-        graph_ldict["m2m_edge_index"].numpy(),
     )
 
-    mesh_proj_pos = graph_ldict["mesh_static_features"].numpy()
-
-    # Plotting is in 3d, with lat-lons transformed to be on unit sphere
+    # Plotting is in 3d, with lat-lons
     grid_lat_lon = utils.get_stacked_lat_lons(datastore, datastore_boundary)
     # (num_nodes_full, 3)
-
-    # TODO Should this really be done here?
-    # TODO Now these will either be in-proj coords or lat-lons depending
-    # on what kinds of graph was made
-    mesh_lat_lon = ccrs.PlateCarree().transform_points(
-        datastore.coords_projection,
-        mesh_proj_pos[:, 0],
-        mesh_proj_pos[:, 1],
-    )
 
     # Add plotting objects to this list
     data_objs = []
@@ -200,133 +187,110 @@ def main():
     # Radius
     mesh_radius = GRID_RADIUS + args.mesh_height
 
-    # Plot G2M
-    data_objs.append(
-        create_edge_plot(
-            g2m_edge_index,
-            grid_lat_lon,
-            mesh_lat_lon,  # TODO Hi?
-            "G2M Edges",
-            color=args.g2m_color,
-            width=0.4,
-            from_radius=GRID_RADIUS,
-            to_radius=mesh_radius,
-        )
-    )
-
-    # Plot M2G
-    data_objs.append(
-        create_edge_plot(
-            m2g_edge_index,
-            mesh_lat_lon,  # TODO Hi?
-            grid_lat_lon,
-            "M2G Edges",
-            color=args.m2g_color,
-            width=0.4,
-            from_radius=mesh_radius,
-            to_radius=GRID_RADIUS,
-        )
-    )
-
     # Mesh positioning and edges to plot differ if we have a hierarchical graph
     if hierarchical:
-        mesh_up_edge_index, mesh_down_edge_index = (
-            [ei.numpy() for ei in graph_ldict["mesh_up_edge_index"]],
-            [ei.numpy() for ei in graph_ldict["mesh_down_edge_index"]],
-        )
-        mesh_level_pos = [
-            np.concatenate(
-                (
-                    level_static_features.numpy(),
-                    mesh_base_height
-                    + mesh_level_height_diff
-                    * height_level
-                    * np.ones((level_static_features.shape[0], 1)),
-                ),
-                axis=1,
+        # TODO Should this really be done here?
+        # TODO Now these will either be in-proj coords or lat-lons depending
+        # on what kinds of graph was made
+        mesh_lat_lon_level = [
+            ccrs.PlateCarree().transform_points(
+                datastore.coords_projection,
+                mesh_coords[:, 0].numpy(),
+                mesh_coords[:, 1].numpy(),
             )
-            for height_level, level_static_features in enumerate(
-                mesh_static_features, start=1
-            )
-        ]
-        # TODO Make lat-lon
-        all_mesh_pos = np.concatenate(mesh_level_pos, axis=0)
-        grid_con_mesh_pos = mesh_level_pos[0]
-
-        # Add inter-level mesh edges
-        edge_plot_list += [
-            (
-                level_ei.numpy(),
-                level_pos,
-                level_pos,
-                "blue",
-                1,
-                f"M2M Level {level}",
-            )
-            for level, (level_ei, level_pos) in enumerate(
-                zip(m2m_edge_index, mesh_level_pos)
-            )
+            for mesh_coords in graph_ldict["mesh_static_features"]
         ]
 
-        # Add intra-level mesh edges
-        up_edges_ei = [
-            level_up_ei.numpy() for level_up_ei in mesh_up_edge_index
+        # Make edge_index to numpy
+        m2m_edge_index = [ei.numpy() for ei in graph_ldict["m2m_edge_index"]]
+        mesh_up_edge_index = [
+            ei.numpy() for ei in graph_ldict["mesh_up_edge_index"]
         ]
-        down_edges_ei = [
-            level_down_ei.numpy() for level_down_ei in mesh_down_edge_index
+        mesh_down_edge_index = [
+            ei.numpy() for ei in graph_ldict["mesh_down_edge_index"]
         ]
-        # Add up edges
-        for level_i, (up_ei, from_pos, to_pos) in enumerate(
-            zip(up_edges_ei, mesh_level_pos[:-1], mesh_level_pos[1:])
+
+        # Iterate over levels, adding all nodes and edges
+        for bot_level_i, intra_ei in enumerate(
+            m2m_edge_index,
         ):
-            edge_plot_list.append(
-                (
-                    up_ei,
-                    from_pos,
-                    to_pos,
-                    "green",
-                    1,
-                    f"Mesh up {level_i}-{level_i + 1}",
+            # Extract position and radius
+            top_level_i = bot_level_i + 1
+            bot_pos = mesh_lat_lon_level[bot_level_i]
+            bot_radius = mesh_radius + bot_level_i * args.mesh_level_dist
+
+            # Mesh nodes at bottom level
+            data_objs.append(
+                create_node_plot(
+                    bot_pos,
+                    f"Mesh level {bot_level_i} nodes",
+                    color=args.mesh_color,
+                    radius=bot_radius,
                 )
             )
-        #  Add down edges
-        for level_i, (down_ei, from_pos, to_pos) in enumerate(
-            zip(down_edges_ei, mesh_level_pos[1:], mesh_level_pos[:-1])
-        ):
-            edge_plot_list.append(
-                (
-                    down_ei,
-                    from_pos,
-                    to_pos,
-                    "green",
-                    1,
-                    f"Mesh down {level_i + 1}-{level_i}",
+            # Intra-level edges at bottom level
+            data_objs.append(
+                create_edge_plot(
+                    intra_ei,
+                    bot_pos,
+                    bot_pos,
+                    f"Mesh level {bot_level_i} edges",
+                    color=args.mesh_color,
+                    width=0.4,
+                    from_radius=bot_radius,
+                    to_radius=bot_radius,
                 )
             )
 
-        edge_plot_list.append(
-            (
-                m2g_edge_index.numpy(),
-                grid_con_mesh_pos,
-                grid_pos,
-                "black",
-                0.4,
-                "M2G",
-            )
-        )
-        edge_plot_list.append(
-            (
-                g2m_edge_index.numpy(),
-                grid_pos,
-                grid_con_mesh_pos,
-                "black",
-                0.4,
-                "G2M",
-            )
-        )
+            # Do add include up/down edges for top level
+            if top_level_i < len(m2m_edge_index):
+                up_ei = mesh_up_edge_index[bot_level_i]
+                down_ei = mesh_down_edge_index[bot_level_i]
+                top_pos = mesh_lat_lon_level[top_level_i]
+                top_radius = mesh_radius + (top_level_i) * args.mesh_level_dist
 
-        mesh_node_size = 2.5
+                # Up edges
+                data_objs.append(
+                    create_edge_plot(
+                        up_ei,
+                        bot_pos,
+                        top_pos,
+                        f"Mesh up {bot_level_i}->{top_level_i} edges",
+                        color=args.mesh_color,
+                        width=0.4,
+                        from_radius=bot_radius,
+                        to_radius=top_radius,
+                    )
+                )
+                # Down edges
+                data_objs.append(
+                    create_edge_plot(
+                        down_ei,
+                        top_pos,
+                        bot_pos,
+                        f"Mesh up {top_level_i}->{bot_level_i} edges",
+                        color=args.mesh_color,
+                        width=0.4,
+                        from_radius=top_radius,
+                        to_radius=bot_radius,
+                    )
+                )
+
+        # Connect g2m and m2g only to bottom level
+        grid_con_lat_lon = mesh_lat_lon_level[0]
     else:
+        # TODO Should this really be done here?
+        # TODO Now these will either be in-proj coords or lat-lons depending
+        # on what kinds of graph was made
+        mesh_proj_pos = graph_ldict["mesh_static_features"].numpy()
+        mesh_lat_lon = ccrs.PlateCarree().transform_points(
+            datastore.coords_projection,
+            mesh_proj_pos[:, 0],
+            mesh_proj_pos[:, 1],
+        )
+
+        # Non-hierarchical
+        m2m_edge_index = graph_ldict["m2m_edge_index"].numpy()
         # TODO Degree-dependent node size?
         #  mesh_degrees = pyg.utils.degree(m2m_edge_index[1]).numpy()
         #  mesh_node_size = mesh_degrees / 2
@@ -351,6 +315,36 @@ def main():
                 color=args.mesh_color,
             )
         )
+
+        grid_con_lat_lon = mesh_lat_lon
+
+    # Plot G2M
+    data_objs.append(
+        create_edge_plot(
+            g2m_edge_index,
+            grid_lat_lon,
+            grid_con_lat_lon,
+            "G2M Edges",
+            color=args.g2m_color,
+            width=0.4,
+            from_radius=GRID_RADIUS,
+            to_radius=mesh_radius,
+        )
+    )
+
+    # Plot M2G
+    data_objs.append(
+        create_edge_plot(
+            m2g_edge_index,
+            grid_con_lat_lon,
+            grid_lat_lon,
+            "M2G Edges",
+            color=args.m2g_color,
+            width=0.4,
+            from_radius=mesh_radius,
+            to_radius=GRID_RADIUS,
+        )
+    )
 
     fig = go.Figure(data=data_objs)
 
