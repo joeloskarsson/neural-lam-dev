@@ -3,7 +3,6 @@ import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 # Third-party
-import cartopy.crs as ccrs
 import numpy as np
 import plotly.graph_objects as go
 from PIL import Image
@@ -240,7 +239,10 @@ def main():
     graph_dir_path = os.path.join(
         datastore.root_path, "graphs", args.graph_name
     )
-    hierarchical, graph_ldict = utils.load_graph(graph_dir_path=graph_dir_path)
+    hierarchical, graph_ldict = utils.load_graph(
+        graph_dir_path=graph_dir_path,
+        datastore=datastore,
+    )
     # Turn all to numpy
     (g2m_edge_index, m2g_edge_index) = (
         graph_ldict["g2m_edge_index"].numpy(),
@@ -270,26 +272,19 @@ def main():
 
     # Mesh positioning and edges to plot differ if we have a hierarchical graph
     if hierarchical:
-        # TODO Should this really be done here?
-        # TODO Now these will either be in-proj coords or lat-lons depending
-        # on what kinds of graph was made
-        mesh_lat_lon_level = [
-            ccrs.PlateCarree().transform_points(
-                datastore.coords_projection,
-                mesh_coords[:, 0].numpy(),
-                mesh_coords[:, 1].numpy(),
-            )
-            for mesh_coords in graph_ldict["mesh_static_features"]
-        ]
-
         # Make edge_index to numpy
-        m2m_edge_index = [ei.numpy() for ei in graph_ldict["m2m_edge_index"]]
-        mesh_up_edge_index = [
-            ei.numpy() for ei in graph_ldict["mesh_up_edge_index"]
-        ]
-        mesh_down_edge_index = [
-            ei.numpy() for ei in graph_ldict["mesh_down_edge_index"]
-        ]
+        def tensor_list_to_numpy(tensor_list):
+            """Helper function to make list of tensors numpy arrays"""
+            return [elem.numpy() for elem in tensor_list]
+
+        m2m_edge_index = tensor_list_to_numpy(graph_ldict["m2m_edge_index"])
+        mesh_lat_lon_level = tensor_list_to_numpy(graph_ldict["mesh_lat_lon"])
+        mesh_up_edge_index = tensor_list_to_numpy(
+            graph_ldict["mesh_up_edge_index"]
+        )
+        mesh_down_edge_index = tensor_list_to_numpy(
+            graph_ldict["mesh_down_edge_index"]
+        )
 
         # Iterate over levels, adding all nodes and edges
         for bot_level_i, intra_ei in enumerate(
@@ -350,7 +345,7 @@ def main():
                         down_ei,
                         top_pos,
                         bot_pos,
-                        f"Mesh up {top_level_i}->{bot_level_i} edges",
+                        f"Mesh down {top_level_i}->{bot_level_i} edges",
                         color=args.mesh_color,
                         width=args.edge_width,
                         from_radius=top_radius,
@@ -361,19 +356,11 @@ def main():
         # Connect g2m and m2g only to bottom level
         grid_con_lat_lon = mesh_lat_lon_level[0]
     else:
-        # TODO Should this really be done here?
-        # TODO Now these will either be in-proj coords or lat-lons depending
-        # on what kinds of graph was made
-        mesh_proj_pos = graph_ldict["mesh_static_features"].numpy()
-        mesh_lat_lon = ccrs.PlateCarree().transform_points(
-            datastore.coords_projection,
-            mesh_proj_pos[:, 0],
-            mesh_proj_pos[:, 1],
-        )
+        mesh_lat_lon = graph_ldict["mesh_lat_lon"].numpy()
 
         # Non-hierarchical
         m2m_edge_index = graph_ldict["m2m_edge_index"].numpy()
-        # TODO Degree-dependent node size?
+        # TODO Degree-dependent node size option?
         #  mesh_degrees = pyg.utils.degree(m2m_edge_index[1]).numpy()
         #  mesh_node_size = mesh_degrees / 2
 

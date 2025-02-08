@@ -53,7 +53,7 @@ def zero_index_edge_index(edge_index):
     return edge_index - edge_index.min(dim=1, keepdim=True)[0]
 
 
-def load_graph(graph_dir_path, device="cpu"):
+def load_graph(graph_dir_path, datastore, device="cpu"):
     """Load all tensors representing the graph from `graph_dir_path`.
 
     Needs the following files for all graphs:
@@ -95,7 +95,7 @@ def load_graph(graph_dir_path, device="cpu"):
         - mesh_up_features
         - mesh_down_features
         - mesh_static_features
-
+        - mesh_lat_lon
 
     Load all tensors representing the graph
     """
@@ -190,6 +190,19 @@ def load_graph(graph_dir_path, device="cpu"):
         len(mesh_static_features) == n_levels
     ), "Inconsistent number of levels in mesh"
 
+    # Get lat-lons
+    mesh_lat_lon = [
+        torch.tensor(
+            ccrs.PlateCarree().transform_points(
+                datastore.coords_projection,
+                mesh_coords[:, 0].numpy(),
+                mesh_coords[:, 1].numpy(),
+            ),
+            dtype=torch.float32,
+        )
+        for mesh_coords in mesh_static_features
+    ]
+
     if hierarchical:
         # Load up and down edges and features
         mesh_up_edge_index = BufferList(
@@ -228,6 +241,7 @@ def load_graph(graph_dir_path, device="cpu"):
         m2m_edge_index = m2m_edge_index[0]
         m2m_features = m2m_features[0]
         mesh_static_features = mesh_static_features[0]
+        mesh_lat_lon = mesh_lat_lon[0]
 
         (
             mesh_up_edge_index,
@@ -248,6 +262,7 @@ def load_graph(graph_dir_path, device="cpu"):
         "mesh_up_features": mesh_up_features,
         "mesh_down_features": mesh_down_features,
         "mesh_static_features": mesh_static_features,
+        "mesh_lat_lon": mesh_lat_lon,
     }
 
 
