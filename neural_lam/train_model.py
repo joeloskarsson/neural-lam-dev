@@ -210,6 +210,11 @@ def main(input_args=None):
         help="Number of example predictions to plot during evaluation "
         "(default: 1)",
     )
+    parser.add_argument(
+        "--save_eval_to_zarr_path",
+        type=str,
+        help="Save evaluation results to zarr dataset at given path ",
+    )
 
     # Logger Settings
     parser.add_argument(
@@ -280,9 +285,9 @@ def main(input_args=None):
     }
 
     # Asserts for arguments
-    assert (
-        args.config_path is not None
-    ), "Specify your config with --config_path"
+    assert args.config_path is not None, (
+        "Specify your config with --config_path"
+    )
     assert args.model in MODELS, f"Unknown model: {args.model}"
     assert args.eval in (
         None,
