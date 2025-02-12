@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import wandb
 import xarray as xr
 from loguru import logger
+
+import wandb
 
 # Local
 from .. import metrics, vis
@@ -69,12 +70,14 @@ class ARModel(pl.LightningModule):
             ),
             # Change stats below to be for diff of standardized variables
             "diff_mean": torch.tensor(
-                da_state_stats.state_diff_mean.values / da_state_stats.state_std.values,
-                dtype=torch.float32
+                da_state_stats.state_diff_mean.values
+                / da_state_stats.state_std.values,
+                dtype=torch.float32,
             ),
             "diff_std": torch.tensor(
-                da_state_stats.state_diff_std.values / da_state_stats.state_std.values,
-                dtype=torch.float32
+                da_state_stats.state_diff_std.values
+                / da_state_stats.state_std.values,
+                dtype=torch.float32,
             ),
         }
 
@@ -465,27 +468,10 @@ class ARModel(pl.LightningModule):
         batch_idx: int,
         zarr_output_path: str,
     ):
-        """
-        Save state predictions for single batch to zarr dataset. Will append to
-        existing dataset for batch_idx > 0. Resulting dataset will contain a
-        variable named `state` with coordinates (start_time,
-        elapsed_forecast_duration, grid_index, state_feature).
-        Parameters
-        ----------
-        batch_times : torch.Tensor[int]
-            The times for the batch, given as epoch time in nanoseconds. Shape
-            is (B, args.pred_steps) where B is the batch size and
-            args.pred_steps is the number of prediction steps.
-        batch_predictions : torch.Tensor[float]
-            The predictions for the batch, given as (B, args.pred_steps,
-            num_grid_nodes, d_f) where B is the batch size, args.pred_steps is
-            the number of prediction steps, num_grid_nodes is the number of
-            grid nodes, and d_f is the number of state features.
-        batch_idx : int
-            The index of the batch in the current epoch.
-        """
+        """Save state predictions using zarr with automatic region selection."""
         batch_size = batch_predictions.shape[0]
-        # Convert predictions to DataArray using _create_dataarray_from_tensor
+
+        # Convert predictions to DataArrays
         das_pred = []
         for i in range(len(batch_times)):
             da_pred = self._create_dataarray_from_tensor(
@@ -494,9 +480,6 @@ class ARModel(pl.LightningModule):
                 split="test",
                 category="state",
             )
-            # Unstack grid coords if necessary, this also avoids the need to
-            # try to store a MultiIndex zarr dataset which is not supported by
-            # xarray
             if isinstance(self._datastore, BaseRegularGridDatastore):
                 da_pred = self._datastore.unstack_grid_coords(da_pred)
 
@@ -508,18 +491,52 @@ class ARModel(pl.LightningModule):
             das_pred.append(da_pred)
 
         da_pred_batch = xr.concat(das_pred, dim="start_time")
-
-        # Apply chunking along analysis_time so that each batch is saved as a
-        # separate chunk
         da_pred_batch = da_pred_batch.chunk({"start_time": batch_size})
 
-        if batch_idx == 0:
-            logger.info(f"Saving predictions to {zarr_output_path}")
-            da_pred_batch.to_zarr(zarr_output_path, mode="w", consolidated=True)
-        else:
-            da_pred_batch.to_zarr(
-                zarr_output_path, mode="a", append_dim="start_time"
+        # Initialize zarr array on first batch of rank 0
+        if batch_idx == 0 and self.trainer.is_global_zero:
+            logger.info(f"Creating zarr dataset at {zarr_output_path}")
+
+            # Get dataloader length safely
+            test_dl = (
+                self.trainer.test_dataloaders
+                if isinstance(self.trainer.test_dataloaders, list)
+                else [self.trainer.test_dataloaders]
+            )[0]
+            total_samples = len(test_dl) * batch_size * self.trainer.world_size
+
+            # First create a template Dataset with correct dimensions and coords
+            ds = xr.Dataset(
+                {
+                    "state": (
+                        da_pred_batch.dims,
+                        np.zeros(
+                            (total_samples,) + da_pred_batch.shape[1:],
+                            dtype=da_pred_batch.dtype,
+                        ),
+                        {"_ARRAY_DIMENSIONS": list(da_pred_batch.dims)},
+                    )
+                },
+                coords={
+                    "start_time": np.arange(total_samples),
+                    **{
+                        k: v.values
+                        for k, v in da_pred_batch.coords.items()
+                        if k != "start_time"
+                    },
+                },
             )
+
+            # Initialize zarr store with template Dataset
+            ds.to_zarr(zarr_output_path, mode="w")
+
+            # Wait for initialization to complete
+            self.trainer.strategy.barrier()
+
+        # Write data with region selection
+        da_pred_batch.to_zarr(
+            zarr_output_path, region="auto", compute=True, consolidated=True
+        )
 
     # pylint: disable-next=unused-argument
     def test_step(self, batch, batch_idx):
@@ -696,14 +713,12 @@ class ARModel(pl.LightningModule):
 
                 example_i = self.plotted_examples
 
-                wandb.log(
-                    {
-                        f"{var_name}_example_{example_i}": wandb.Image(fig)
-                        for var_name, fig in zip(
-                            self._datastore.get_vars_names("state"), var_figs
-                        )
-                    }
-                )
+                wandb.log({
+                    f"{var_name}_example_{example_i}": wandb.Image(fig)
+                    for var_name, fig in zip(
+                        self._datastore.get_vars_names("state"), var_figs
+                    )
+                })
                 plt.close(
                     "all"
                 )  # Close all figs for this time step, saves memory
@@ -887,24 +902,20 @@ class ARModel(pl.LightningModule):
                     # Clear momentum and other state
                     optimizer_state["state"] = {}
                     # Reset step count and other metadata
-                    optimizer_state.update(
-                        {
-                            "step": 0,
-                            "epoch": 0,
-                        }
-                    )
+                    optimizer_state.update({
+                        "step": 0,
+                        "epoch": 0,
+                    })
 
             # Reset scheduler states
             if "lr_schedulers" in checkpoint:
                 for scheduler_state in checkpoint["lr_schedulers"]:
-                    scheduler_state.update(
-                        {
-                            "_step_count": 0,
-                            "_last_lr": [self.args.lr],
-                            "base_lrs": [self.args.lr],
-                            "last_epoch": 0,
-                        }
-                    )
+                    scheduler_state.update({
+                        "_step_count": 0,
+                        "_last_lr": [self.args.lr],
+                        "base_lrs": [self.args.lr],
+                        "last_epoch": 0,
+                    })
 
             # Reset any other training state
             checkpoint.pop("loops", None)
