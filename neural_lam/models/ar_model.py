@@ -8,6 +8,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import xarray as xr
+import zarr
 from loguru import logger
 
 import wandb
@@ -469,9 +470,7 @@ class ARModel(pl.LightningModule):
         zarr_output_path: str,
     ):
         """Save state predictions using zarr with automatic region selection."""
-        batch_size = batch_predictions.shape[0]
-
-        # Convert predictions to DataArrays
+        # Convert predictions to DataArrays with smaller chunks
         das_pred = []
         for i in range(len(batch_times)):
             da_pred = self._create_dataarray_from_tensor(
@@ -483,57 +482,87 @@ class ARModel(pl.LightningModule):
             if isinstance(self._datastore, BaseRegularGridDatastore):
                 da_pred = self._datastore.unstack_grid_coords(da_pred)
 
+            # Keep original time dimension and add forecast metadata
             t0 = da_pred.coords["time"].values[0]
-            da_pred.coords["start_time"] = t0
-            da_pred.coords["elapsed_forecast_duration"] = da_pred.time - t0
-            da_pred = da_pred.swap_dims({"time": "elapsed_forecast_duration"})
+            da_pred = da_pred.rename({"time": "elapsed_forecast_duration"})
+            da_pred = da_pred.assign_coords({
+                "start_time": t0,
+                "elapsed_forecast_duration": da_pred.elapsed_forecast_duration
+                - t0,
+            })
             da_pred.name = "state"
+
+            # Use much smaller chunks to avoid memory issues
+            da_pred = da_pred.chunk({
+                "elapsed_forecast_duration": 1,
+                "state_feature": 1,
+                "x": 100,
+                "y": 100,
+            })
+
             das_pred.append(da_pred)
 
+        # Concatenate with small chunks
         da_pred_batch = xr.concat(das_pred, dim="start_time")
-        da_pred_batch = da_pred_batch.chunk({"start_time": batch_size})
+        da_pred_batch = da_pred_batch.chunk({
+            "start_time": 1,
+            "elapsed_forecast_duration": 1,
+            "state_feature": 1,
+            "x": 100,
+            "y": 100,
+        })
 
         # Initialize zarr array on first batch of rank 0
         if batch_idx == 0 and self.trainer.is_global_zero:
             logger.info(f"Creating zarr dataset at {zarr_output_path}")
+            # Get all test timestamps from datastore
+            da_state = self._datastore.get_dataarray(
+                category="state", split="test"
+            )
+            all_times = da_state.time.values
 
-            # Get dataloader length safely
-            test_dl = (
-                self.trainer.test_dataloaders
-                if isinstance(self.trainer.test_dataloaders, list)
-                else [self.trainer.test_dataloaders]
-            )[0]
-            total_samples = len(test_dl) * batch_size * self.trainer.world_size
+            # Get template with correct dims and coords, but don't fill with data
+            template_pred = da_pred_batch.copy()
+            template_pred = template_pred.reindex(start_time=all_times)
 
-            # First create a template Dataset with correct dimensions and coords
-            ds = xr.Dataset(
-                {
-                    "state": (
-                        da_pred_batch.dims,
-                        np.zeros(
-                            (total_samples,) + da_pred_batch.shape[1:],
-                            dtype=da_pred_batch.dtype,
-                        ),
-                        {"_ARRAY_DIMENSIONS": list(da_pred_batch.dims)},
-                    )
-                },
-                coords={
-                    "start_time": np.arange(total_samples),
-                    **{
-                        k: v.values
-                        for k, v in da_pred_batch.coords.items()
-                        if k != "start_time"
-                    },
-                },
+            # Get shapes and chunks
+            shape = {dim: len(template_pred[dim]) for dim in template_pred.dims}
+            chunks = {
+                "start_time": 1,
+                "elapsed_forecast_duration": 1,
+                "state_feature": 1,
+                "x": 100,
+                "y": 100,
+            }
+
+            # Create zarr store and root group
+            store = zarr.DirectoryStore(zarr_output_path)
+            root = zarr.group(store=store)
+
+            # Create dataset with dimensions metadata
+            arr = root.create_dataset(
+                "state",
+                shape=tuple(shape.values()),
+                chunks=tuple(chunks.values()),
+                dtype="float32",
+                fill_value=np.nan,
             )
 
-            # Initialize zarr store with template Dataset
-            ds.to_zarr(zarr_output_path, mode="w")
+            # Add dimensions metadata
+            arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
 
-            # Wait for initialization to complete
-            self.trainer.strategy.barrier()
+            # Add coordinates metadata
+            ds = template_pred.to_dataset(name="state")
+            encoding = {k: {"chunks": v} for k, v in chunks.items()}
+            ds.to_zarr(
+                zarr_output_path, mode="a", encoding=encoding, compute=False
+            )
 
-        # Write data with region selection
+        logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
+
+        # Wait for initialization to complete
+        # self.trainer.strategy.barrier()
+
         da_pred_batch.to_zarr(
             zarr_output_path, region="auto", compute=True, consolidated=True
         )
