@@ -470,6 +470,14 @@ class ARModel(pl.LightningModule):
         zarr_output_path: str,
     ):
         """Save state predictions using zarr with automatic region selection."""
+
+        chunks = {
+            "start_time": 1,
+            "elapsed_forecast_duration": 1,
+            "state_feature": 20,
+            "x": 100,
+            "y": 100,
+        }
         # Convert predictions to DataArrays with smaller chunks
         das_pred = []
         for i in range(len(batch_times)):
@@ -493,24 +501,13 @@ class ARModel(pl.LightningModule):
             da_pred.name = "state"
 
             # Use much smaller chunks to avoid memory issues
-            da_pred = da_pred.chunk({
-                "elapsed_forecast_duration": 1,
-                "state_feature": 1,
-                "x": 100,
-                "y": 100,
-            })
+            da_pred = da_pred.chunk(chunks.pop("start_time"))
 
             das_pred.append(da_pred)
 
         # Concatenate with small chunks
         da_pred_batch = xr.concat(das_pred, dim="start_time")
-        da_pred_batch = da_pred_batch.chunk({
-            "start_time": 1,
-            "elapsed_forecast_duration": 1,
-            "state_feature": 1,
-            "x": 100,
-            "y": 100,
-        })
+        da_pred_batch = da_pred_batch.chunk(chunks)
 
         # Initialize zarr array on first batch of rank 0
         if batch_idx == 0 and self.trainer.is_global_zero:
@@ -527,13 +524,6 @@ class ARModel(pl.LightningModule):
 
             # Get shapes and chunks
             shape = {dim: len(template_pred[dim]) for dim in template_pred.dims}
-            chunks = {
-                "start_time": 1,
-                "elapsed_forecast_duration": 1,
-                "state_feature": 1,
-                "x": 100,
-                "y": 100,
-            }
 
             # Create zarr store and root group
             store = zarr.DirectoryStore(zarr_output_path)
@@ -553,10 +543,7 @@ class ARModel(pl.LightningModule):
 
             # Add coordinates metadata
             ds = template_pred.to_dataset(name="state")
-            encoding = {k: {"chunks": v} for k, v in chunks.items()}
-            ds.to_zarr(
-                zarr_output_path, mode="a", encoding=encoding, compute=False
-            )
+            ds.to_zarr(zarr_output_path, mode="w")
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
 
@@ -564,7 +551,8 @@ class ARModel(pl.LightningModule):
         # self.trainer.strategy.barrier()
 
         da_pred_batch.to_zarr(
-            zarr_output_path, region="auto", compute=True, consolidated=True
+            zarr_output_path,
+            region="auto",
         )
 
     # pylint: disable-next=unused-argument
