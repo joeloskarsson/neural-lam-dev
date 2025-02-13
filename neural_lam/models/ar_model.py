@@ -474,9 +474,9 @@ class ARModel(pl.LightningModule):
         chunks = {
             "start_time": 1,
             "elapsed_forecast_duration": 1,
-            "state_feature": 20,
-            "x": 100,
-            "y": 100,
+            "state_feature": -1,
+            "x": -1,
+            "y": -1,
         }
         # Convert predictions to DataArrays with smaller chunks
         das_pred = []
@@ -543,17 +543,20 @@ class ARModel(pl.LightningModule):
 
             # Add coordinates metadata
             ds = template_pred.to_dataset(name="state")
+            logger.info(f"1Writing coordinates to zarr at {zarr_output_path}")
             ds.to_zarr(zarr_output_path, mode="w")
+            logger.info(f"2Writing data to zarr at {zarr_output_path}")
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
 
         # Wait for initialization to complete
-        # self.trainer.strategy.barrier()
-
+        self.trainer.strategy.barrier()
+        logger.info(f"3Writing batch {batch_idx} to zarr at {zarr_output_path}")
         da_pred_batch.to_zarr(
             zarr_output_path,
             region="auto",
         )
+        logger.info(f"4Finished writing batch {batch_idx} to zarr")
 
     # pylint: disable-next=unused-argument
     def test_step(self, batch, batch_idx):
