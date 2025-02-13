@@ -469,7 +469,7 @@ class ARModel(pl.LightningModule):
         batch_idx: int,
         zarr_output_path: str,
     ):
-        """Save state predictions using zarr with automatic region selection."""
+        """Save state predictions using zarr with consistent manual chunking."""
         das_pred = []
         for i in range(len(batch_times)):
             da_pred = self._create_dataarray_from_tensor(
@@ -481,7 +481,7 @@ class ARModel(pl.LightningModule):
             if isinstance(self._datastore, BaseRegularGridDatastore):
                 da_pred = self._datastore.unstack_grid_coords(da_pred)
 
-            # Keep original time dimension and add forecast metadata
+            # Keep original time and add forecast metadata
             t0 = da_pred.coords["time"].values[0]
             da_pred = da_pred.rename({"time": "elapsed_forecast_duration"})
             da_pred = da_pred.assign_coords({
@@ -492,10 +492,20 @@ class ARModel(pl.LightningModule):
             da_pred.name = "state"
             das_pred.append(da_pred)
 
-        # Concatenate without rechunking
+        # Concatenate without rechunking yet
         da_pred_batch = xr.concat(das_pred, dim="start_time")
 
-        # Initialize the zarr array only on batch 0 (and on rank 0)
+        # Define a consistent chunking dictionary.
+        # Adjust these sizes according to your data and available hardware.
+        chunking = {
+            "start_time": 1,
+            "elapsed_forecast_duration": 1,
+            "state_feature": 1,
+            "x": 100,
+            "y": 100,
+        }
+
+        # On batch 0 (and on rank 0), initialize the zarr dataset using full time axis.
         if batch_idx == 0 and self.trainer.is_global_zero:
             logger.info(f"Creating zarr dataset at {zarr_output_path}")
             da_state = self._datastore.get_dataarray(
@@ -505,18 +515,6 @@ class ARModel(pl.LightningModule):
 
             # Reindex to the full start_time axis and apply consistent chunking.
             template_pred = da_pred_batch.copy().reindex(start_time=all_times)
-
-            # Define a consistent chunking dictionary.
-            # Adjust the chunk sizes as appropriate for your data and hardware.
-            chunking = {
-                "start_time": 1,
-                "elapsed_forecast_duration": 1,
-                "state_feature": 1,
-                "x": 100,
-                "y": 100,
-            }
-
-            # Ensure the template uses our chunking
             template_pred = template_pred.chunk(chunking)
 
             # Determine chunk tuple in the order of dimensions.
@@ -535,15 +533,13 @@ class ARModel(pl.LightningModule):
                 fill_value=np.nan,
             )
             arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
-
             ds = template_pred.to_dataset(name="state")
             # Set encoding to enforce the same chunking during the write.
             encodings = {"state": {"chunks": list(chunk_tuple)}}
             ds.to_zarr(zarr_output_path, mode="w", encoding=encodings)
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
-
-        # Ensure the batch being written uses the same chunking.
+        # Apply the same chunking to the current batch.
         da_pred_batch = da_pred_batch.chunk(chunking)
         self.trainer.strategy.barrier()
         da_pred_batch.to_zarr(zarr_output_path, region="auto")
