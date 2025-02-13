@@ -8,7 +8,6 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import xarray as xr
-import zarr
 from loguru import logger
 
 import wandb
@@ -17,7 +16,6 @@ import wandb
 from .. import metrics, vis
 from ..config import NeuralLAMConfig
 from ..datastore import BaseDatastore
-from ..datastore.base import BaseRegularGridDatastore
 from ..loss_weighting import get_state_feature_weighting
 from ..weather_dataset import WeatherDataset
 
@@ -469,80 +467,31 @@ class ARModel(pl.LightningModule):
         batch_idx: int,
         zarr_output_path: str,
     ):
-        """Save state predictions using zarr with consistent manual chunking."""
-        das_pred = []
+        """Simplified version to save predictions using xarray.to_zarr with mode 'w' and 'a'."""
+        das = []
         for i in range(len(batch_times)):
-            da_pred = self._create_dataarray_from_tensor(
+            da = self._create_dataarray_from_tensor(
                 tensor=batch_predictions[i],
                 time=batch_times[i],
                 split="test",
                 category="state",
             )
-            if isinstance(self._datastore, BaseRegularGridDatastore):
-                da_pred = self._datastore.unstack_grid_coords(da_pred)
+            da.name = "state"
+            das.append(da)
 
-            # Keep original time and add forecast metadata
-            t0 = da_pred.coords["time"].values[0]
-            da_pred = da_pred.rename({"time": "elapsed_forecast_duration"})
-            da_pred = da_pred.assign_coords({
-                "start_time": t0,
-                "elapsed_forecast_duration": da_pred.elapsed_forecast_duration
-                - t0,
-            })
-            da_pred.name = "state"
-            das_pred.append(da_pred)
+        # Concatenate predictions along new coordinate 'start_time'
+        da_batch = xr.concat(das, dim="start_time")
 
-        # Concatenate without rechunking yet
-        da_pred_batch = xr.concat(das_pred, dim="start_time")
-
-        # Define a consistent chunking dictionary.
-        # Adjust these sizes according to your data and available hardware.
-        chunking = {
-            "start_time": 1,
-            "elapsed_forecast_duration": 1,
-            "state_feature": 1,
-            "x": 100,
-            "y": 100,
-        }
-
-        # On batch 0 (and on rank 0), initialize the zarr dataset using full time axis.
+        # First worker writes the complete zarr dataset while others wait and then append.
         if batch_idx == 0 and self.trainer.is_global_zero:
             logger.info(f"Creating zarr dataset at {zarr_output_path}")
-            da_state = self._datastore.get_dataarray(
-                category="state", split="test"
-            )
-            all_times = da_state.time.values
-
-            # Reindex to the full start_time axis and apply consistent chunking.
-            template_pred = da_pred_batch.copy().reindex(start_time=all_times)
-            template_pred = template_pred.chunk(chunking)
-
-            # Determine chunk tuple in the order of dimensions.
-            chunk_tuple = tuple(chunking[dim] for dim in template_pred.dims)
-            shape = tuple(
-                template_pred.sizes[dim] for dim in template_pred.dims
-            )
-
-            store = zarr.DirectoryStore(zarr_output_path)
-            root = zarr.group(store=store)
-            arr = root.create_dataset(
-                "state",
-                shape=shape,
-                chunks=chunk_tuple,
-                dtype="float32",
-                fill_value=np.nan,
-            )
-            arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
-            ds = template_pred.to_dataset(name="state")
-            # Set encoding to enforce the same chunking during the write.
-            encodings = {"state": {"chunks": list(chunk_tuple)}}
-            ds.to_zarr(zarr_output_path, mode="w", encoding=encodings)
-
-        logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
-        # Apply the same chunking to the current batch.
-        da_pred_batch = da_pred_batch.chunk(chunking)
+            da_batch.to_zarr(zarr_output_path, mode="w")
+        # Synchronize workers before appending the rest.
         self.trainer.strategy.barrier()
-        da_pred_batch.to_zarr(zarr_output_path, region="auto")
+        logger.info(
+            f"Appending batch {batch_idx} to zarr at {zarr_output_path}"
+        )
+        da_batch.to_zarr(zarr_output_path, mode="a", region="auto")
 
     # pylint: disable-next=unused-argument
     def test_step(self, batch, batch_idx):
