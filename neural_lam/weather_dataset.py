@@ -219,7 +219,10 @@ class WeatherDataset(torch.utils.data.Dataset):
             )
         else:
             state_times = self.da_state.time
-        self.time_step_state = get_time_step(state_times)
+        self.orig_time_step_state = get_time_step(state_times)
+        self.time_step_state = (
+            self.interior_subsample_step * self.orig_time_step_state
+        )
         # FORCING
         if self.da_forcing is not None:
             if self.datastore.is_forecast:
@@ -229,16 +232,21 @@ class WeatherDataset(torch.utils.data.Dataset):
                 )
             else:
                 forcing_times = self.da_forcing.time
-            self.time_step_forcing = get_time_step(forcing_times.values)
+            self.time_step_forcing = (
+                self.boundary_subsample_step
+                * get_time_step(forcing_times.values)
+            )
         # inform user about the original and the subsampled time step
         if self.interior_subsample_step != 1:
             print(
                 f"Subsampling interior data with step size "
                 f"{self.interior_subsample_step} from original time step "
-                f"{self.time_step_state}"
+                f"{self.orig_time_step_state}"
             )
         else:
-            print(f"Using original time step {self.time_step_state} for data")
+            print(
+                f"Using original time step {self.orig_time_step_state} for data"
+            )
 
         # BOUNDARY FORCING
         if self.da_boundary_forcing is not None:
@@ -981,7 +989,9 @@ class EvalSubsetWrapper(torch.utils.data.Dataset):
         first_batch = dataset[0]
         first_init_time = self.get_utc_init_of_batch(first_batch)
 
-        time_step_state_hour = self.dataset.time_step_state.astype(
+        # Note that we have to consider orig_time_step-state, as that is the
+        # time difference between init times in self.dataset
+        time_step_state_hour = self.dataset.orig_time_step_state.astype(
             "timedelta64[h]"
         ).astype(int)
         assert (
@@ -1006,7 +1016,7 @@ class EvalSubsetWrapper(torch.utils.data.Dataset):
     def get_utc_init_of_batch(self, batch):
         """Get init time for batch in UTC, as int"""
         target_times_np = batch[-1].numpy().astype("datetime64[ns]")
-        init_time = target_times_np[0] - self.dataset.time_step_state
+        init_time = target_times_np[0] - self.dataset.orig_time_step_state
         init_time_hour = init_time.astype("datetime64[h]").astype(int) % 24
         return init_time_hour
 
