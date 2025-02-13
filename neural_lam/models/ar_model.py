@@ -698,12 +698,14 @@ class ARModel(pl.LightningModule):
 
                 example_i = self.plotted_examples
 
-                wandb.log({
-                    f"{var_name}_example_{example_i}": wandb.Image(fig)
-                    for var_name, fig in zip(
-                        self._datastore.get_vars_names("state"), var_figs
-                    )
-                })
+                wandb.log(
+                    {
+                        f"{var_name}_example_{example_i}": wandb.Image(fig)
+                        for var_name, fig in zip(
+                            self._datastore.get_vars_names("state"), var_figs
+                        )
+                    }
+                )
                 plt.close(
                     "all"
                 )  # Close all figs for this time step, saves memory
@@ -887,20 +889,24 @@ class ARModel(pl.LightningModule):
                     # Clear momentum and other state
                     optimizer_state["state"] = {}
                     # Reset step count and other metadata
-                    optimizer_state.update({
-                        "step": 0,
-                        "epoch": 0,
-                    })
+                    optimizer_state.update(
+                        {
+                            "step": 0,
+                            "epoch": 0,
+                        }
+                    )
 
             # Reset scheduler states
             if "lr_schedulers" in checkpoint:
                 for scheduler_state in checkpoint["lr_schedulers"]:
-                    scheduler_state.update({
-                        "_step_count": 0,
-                        "_last_lr": [self.args.lr],
-                        "base_lrs": [self.args.lr],
-                        "last_epoch": 0,
-                    })
+                    scheduler_state.update(
+                        {
+                            "_step_count": 0,
+                            "_last_lr": [self.args.lr],
+                            "base_lrs": [self.args.lr],
+                            "last_epoch": 0,
+                        }
+                    )
 
             # Reset any other training state
             checkpoint.pop("loops", None)

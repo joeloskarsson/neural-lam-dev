@@ -148,7 +148,9 @@ class BaseGraphModel(ARModel):
             step_length_ratio = (
                 datastore_boundary.step_length / datastore.step_length
             )
-            min_time_delta = -(args.num_past_boundary_steps + 1) * step_length_ratio
+            min_time_delta = (
+                -(args.num_past_boundary_steps + 1) * step_length_ratio
+            )
             max_time_delta = args.num_future_boundary_steps * step_length_ratio
             time_delta_magnitude = max(max_time_delta, abs(min_time_delta))
 
