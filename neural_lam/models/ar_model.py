@@ -495,7 +495,7 @@ class ARModel(pl.LightningModule):
         # Concatenate without rechunking
         da_pred_batch = xr.concat(das_pred, dim="start_time")
 
-        # Initialize zarr array just once on first batch (and on rank 0)
+        # Initialize the zarr array only on batch 0 (and on rank 0)
         if batch_idx == 0 and self.trainer.is_global_zero:
             logger.info(f"Creating zarr dataset at {zarr_output_path}")
             da_state = self._datastore.get_dataarray(
@@ -503,25 +503,48 @@ class ARModel(pl.LightningModule):
             )
             all_times = da_state.time.values
 
+            # Reindex to the full start_time axis and apply consistent chunking.
             template_pred = da_pred_batch.copy().reindex(start_time=all_times)
-            shape = {dim: len(template_pred[dim]) for dim in template_pred.dims}
+
+            # Define a consistent chunking dictionary.
+            # Adjust the chunk sizes as appropriate for your data and hardware.
+            chunking = {
+                "start_time": 1,
+                "elapsed_forecast_duration": 1,
+                "state_feature": 1,
+                "x": 100,
+                "y": 100,
+            }
+
+            # Ensure the template uses our chunking
+            template_pred = template_pred.chunk(chunking)
+
+            # Determine chunk tuple in the order of dimensions.
+            chunk_tuple = tuple(chunking[dim] for dim in template_pred.dims)
+            shape = tuple(
+                template_pred.sizes[dim] for dim in template_pred.dims
+            )
 
             store = zarr.DirectoryStore(zarr_output_path)
             root = zarr.group(store=store)
             arr = root.create_dataset(
                 "state",
-                shape=tuple(shape.values()),
-                chunks=None,  # Let xarray/zarr decide chunking
+                shape=shape,
+                chunks=chunk_tuple,
                 dtype="float32",
                 fill_value=np.nan,
             )
             arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
 
             ds = template_pred.to_dataset(name="state")
-            ds.to_zarr(zarr_output_path, mode="w")
+            # Set encoding to enforce the same chunking during the write.
+            encodings = {"state": {"chunks": list(chunk_tuple)}}
+            ds.to_zarr(zarr_output_path, mode="w", encoding=encodings)
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
 
+        # Ensure the batch being written uses the same chunking.
+        da_pred_batch = da_pred_batch.chunk(chunking)
         self.trainer.strategy.barrier()
         da_pred_batch.to_zarr(zarr_output_path, region="auto")
 
