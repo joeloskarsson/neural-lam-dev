@@ -470,15 +470,6 @@ class ARModel(pl.LightningModule):
         zarr_output_path: str,
     ):
         """Save state predictions using zarr with automatic region selection."""
-
-        chunks = {
-            "start_time": 1,
-            "elapsed_forecast_duration": 1,
-            "state_feature": -1,
-            "x": -1,
-            "y": -1,
-        }
-        # Convert predictions to DataArrays with smaller chunks
         das_pred = []
         for i in range(len(batch_times)):
             da_pred = self._create_dataarray_from_tensor(
@@ -499,49 +490,33 @@ class ARModel(pl.LightningModule):
                 - t0,
             })
             da_pred.name = "state"
-
-            # Use much smaller chunks to avoid memory issues
-            da_pred = da_pred.chunk(chunks.pop("start_time"))
-
             das_pred.append(da_pred)
 
-        # Concatenate with small chunks
+        # Concatenate without rechunking
         da_pred_batch = xr.concat(das_pred, dim="start_time")
-        da_pred_batch = da_pred_batch.chunk(chunks)
 
-        # Initialize zarr array on first batch of rank 0
+        # Initialize zarr array just once on first batch (and on rank 0)
         if batch_idx == 0 and self.trainer.is_global_zero:
             logger.info(f"Creating zarr dataset at {zarr_output_path}")
-            # Get all test timestamps from datastore
             da_state = self._datastore.get_dataarray(
                 category="state", split="test"
             )
             all_times = da_state.time.values
 
-            # Get template with correct dims and coords, but don't fill with data
-            template_pred = da_pred_batch.copy()
-            template_pred = template_pred.reindex(start_time=all_times)
-
-            # Get shapes and chunks
+            template_pred = da_pred_batch.copy().reindex(start_time=all_times)
             shape = {dim: len(template_pred[dim]) for dim in template_pred.dims}
 
-            # Create zarr store and root group
             store = zarr.DirectoryStore(zarr_output_path)
             root = zarr.group(store=store)
-
-            # Create dataset with dimensions metadata
             arr = root.create_dataset(
                 "state",
                 shape=tuple(shape.values()),
-                chunks=tuple(chunks.values()),
+                chunks=None,  # Let xarray/zarr decide chunking
                 dtype="float32",
                 fill_value=np.nan,
             )
-
-            # Add dimensions metadata
             arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
 
-            # Add coordinates metadata
             ds = template_pred.to_dataset(name="state")
             logger.info(f"1Writing coordinates to zarr at {zarr_output_path}")
             ds.to_zarr(zarr_output_path, mode="w")
@@ -549,13 +524,9 @@ class ARModel(pl.LightningModule):
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
 
-        # Wait for initialization to complete
         self.trainer.strategy.barrier()
         logger.info(f"3Writing batch {batch_idx} to zarr at {zarr_output_path}")
-        da_pred_batch.to_zarr(
-            zarr_output_path,
-            region="auto",
-        )
+        da_pred_batch.to_zarr(zarr_output_path, region="auto")
         logger.info(f"4Finished writing batch {batch_idx} to zarr")
 
     # pylint: disable-next=unused-argument
