@@ -210,6 +210,13 @@ def main(input_args=None):
         help="Number of example predictions to plot during evaluation "
         "(default: 1)",
     )
+    parser.add_argument(
+        "--eval_init_times",
+        nargs="*",
+        default=[0, 12],
+        help="List of init times (UTC) where validation and evaluation "
+        "forecasts should be started from (default: 0, 12)",
+    )
 
     # Logger Settings
     parser.add_argument(
@@ -324,6 +331,7 @@ def main(input_args=None):
         num_workers=args.num_workers,
         # Make sure that dataset provided for eval contains correct split
         eval_split=args.eval if args.eval is not None else "test",
+        eval_init_times=args.eval_init_times,
         excluded_intervals=config.training.excluded_intervals,
     )
 
