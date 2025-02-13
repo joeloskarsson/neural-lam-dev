@@ -143,8 +143,8 @@ class BaseGraphModel(ARModel):
             layer_norm=False,
         )  # No layer norm on this one
 
+        # Compute constants for use in time_delta encoding
         if self.boundary_forced:
-            # Compute constants for use in time_delta encoding
             step_length_ratio = (
                 datastore_boundary.step_length / datastore.step_length
             )
@@ -153,7 +153,6 @@ class BaseGraphModel(ARModel):
             )
             max_time_delta = args.num_future_boundary_steps * step_length_ratio
             time_delta_magnitude = max(max_time_delta, abs(min_time_delta))
-
             freq_indices = 1.0 + torch.arange(
                 self.time_delta_enc_dim // 2,
                 dtype=torch.float,
