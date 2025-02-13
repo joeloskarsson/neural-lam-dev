@@ -518,16 +518,12 @@ class ARModel(pl.LightningModule):
             arr.attrs["_ARRAY_DIMENSIONS"] = list(template_pred.dims)
 
             ds = template_pred.to_dataset(name="state")
-            logger.info(f"1Writing coordinates to zarr at {zarr_output_path}")
             ds.to_zarr(zarr_output_path, mode="w")
-            logger.info(f"2Writing data to zarr at {zarr_output_path}")
 
         logger.info(f"Writing batch {batch_idx} to zarr at {zarr_output_path}")
 
         self.trainer.strategy.barrier()
-        logger.info(f"3Writing batch {batch_idx} to zarr at {zarr_output_path}")
         da_pred_batch.to_zarr(zarr_output_path, region="auto")
-        logger.info(f"4Finished writing batch {batch_idx} to zarr")
 
     # pylint: disable-next=unused-argument
     def test_step(self, batch, batch_idx):
