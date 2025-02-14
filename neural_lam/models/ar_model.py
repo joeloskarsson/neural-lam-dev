@@ -521,7 +521,17 @@ class ARModel(pl.LightningModule):
 
         if batch_idx == 0:
             logger.info(f"Saving predictions to {zarr_output_path}")
-            da_pred_batch.to_zarr(zarr_output_path, mode="w", consolidated=True)
+            da_pred_batch.to_zarr(
+                zarr_output_path,
+                mode="w",
+                consolidated=True,
+                encoding={
+                    "start_time": {
+                        "units": "Seconds since 1970-01-01 00:00:00",
+                        "dtype": "int64",
+                    },
+                },
+            )
         else:
             da_pred_batch.to_zarr(
                 zarr_output_path, mode="a", append_dim="start_time"
