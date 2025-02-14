@@ -211,6 +211,20 @@ class ARModel(pl.LightningModule):
         # Store step length (h), taking subsampling into account
         self.step_length = datastore.step_length * args.interior_subsample_step
 
+        # Make WeatherDataset:s for being able to make tensor into xr.DA
+        # Note: Unclear if it is actually necessary to make one per split?
+        # TODO: creating an instance of WeatherDataset here on is
+        # not how this should be done but whether WeatherDataset should be
+        # provided to ARModel or where to put plotting still needs discussion
+        self.wds_for_da = {
+            split: WeatherDataset(
+                datastore=self._datastore,
+                datastore_boundary=None,
+                split=split,
+            )
+            for split in ("train", "val", "test")
+        }
+
     def _create_dataarray_from_tensor(
         self,
         tensor: torch.Tensor,
@@ -239,20 +253,12 @@ class ARModel(pl.LightningModule):
         category : str
             The category of the data, either 'state' or 'forcing'
         """
-        # TODO: creating an instance of WeatherDataset here on every call is
-        # not how this should be done but whether WeatherDataset should be
-        # provided to ARModel or where to put plotting still needs discussion
-        weather_dataset = WeatherDataset(
-            datastore=self._datastore,
-            datastore_boundary=None,
-            split=split,
-        )
-
         # Move to CPU if on GPU
         time = time.detach().cpu()
         time = np.array(time, dtype="datetime64[ns]")
 
         tensor = tensor.detach().cpu()
+        weather_dataset = self.wds_for_da[split]
         da = weather_dataset.create_dataarray_from_tensor(
             tensor=tensor, time=time, category=category
         )
