@@ -512,7 +512,11 @@ class ARModel(pl.LightningModule):
             if isinstance(self._datastore, BaseRegularGridDatastore):
                 da_pred = self._datastore.unstack_grid_coords(da_pred)
 
-            t0 = da_pred.coords["time"].values[0]
+            # First entry in da_pred.coords["time"] is time of first prediction,
+            # so init time of forecast is one time step before
+            t0 = da_pred.coords["time"].values[0] - np.array(
+                self.step_length, dtype="timedelta64[h]"
+            )
             da_pred.coords["start_time"] = t0
             da_pred.coords["elapsed_forecast_duration"] = da_pred.time - t0
             da_pred = da_pred.swap_dims({"time": "elapsed_forecast_duration"})
