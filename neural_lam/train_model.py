@@ -295,6 +295,9 @@ def main(input_args=None):
             f"Can not log validation step {step} when validation is "
             f"only unrolled {args.ar_steps_eval} steps."
         )
+    assert (
+        args.load or not args.restore_opt
+    ), "Can not restore opt state when not loading a checkpoint"
 
     # Get an (actual) random run id as a unique identifier
     random_run_id = random.randint(0, 9999)
