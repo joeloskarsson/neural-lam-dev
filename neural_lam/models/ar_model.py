@@ -494,11 +494,17 @@ class ARModel(pl.LightningModule):
             The index of the batch in the current epoch.
         """
         batch_size = batch_predictions.shape[0]
+
+        # Scale predictions back to original data scale
+        batch_predictions_rescaled = (
+            batch_predictions * self.state_std + self.state_mean
+        )
+
         # Convert predictions to DataArray using _create_dataarray_from_tensor
         das_pred = []
         for i in range(len(batch_times)):
             da_pred = self._create_dataarray_from_tensor(
-                tensor=batch_predictions[i],
+                tensor=batch_predictions_rescaled[i],
                 time=batch_times[i],
                 split="test",
                 category="state",
