@@ -493,8 +493,6 @@ class ARModel(pl.LightningModule):
         batch_idx : int
             The index of the batch in the current epoch.
         """
-        batch_size = batch_predictions.shape[0]
-
         # Scale predictions back to original data scale
         batch_predictions_rescaled = (
             batch_predictions * self.state_std + self.state_mean
@@ -528,9 +526,11 @@ class ARModel(pl.LightningModule):
 
         da_pred_batch = xr.concat(das_pred, dim="start_time")
 
-        # Apply chunking along analysis_time so that each batch is saved as a
-        # separate chunk
-        da_pred_batch = da_pred_batch.chunk({"start_time": batch_size})
+        # Apply chunking start_time and elapsed_forecast_duration, but leave
+        # whole state in one chunk
+        da_pred_batch = da_pred_batch.chunk(
+            {"start_time": 1, "elapsed_forecast_duration": 1}
+        )
 
         if batch_idx == 0:
             logger.info(f"Saving predictions to {zarr_output_path}")
