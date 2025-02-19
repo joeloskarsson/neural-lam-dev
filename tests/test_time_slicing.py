@@ -79,12 +79,9 @@ class SinglePointDummyDatastore(BaseDatastore):
             else:
                 raise NotImplementedError(category)
 
-            if self.is_forecast:
-                raise NotImplementedError()
-            else:
-                da = xr.DataArray(
-                    values, dims=["time"], coords={"time": self._time_values}
-                )
+            da = xr.DataArray(
+                values, dims=["time"], coords={"time": self._time_values}
+            )
 
             # add `{category}_feature` and `grid_index` dimensions
             da = da.expand_dims("grid_index")
@@ -537,4 +534,120 @@ def test_time_deltas_in_boundary_data(
         expected_diff = boundary_step * boundary_datastore.step_length
         np.testing.assert_array_equal(
             boundary_time_diffs, [expected_diff] * (len(boundary_times) - 1)
+        )
+
+
+@pytest.mark.parametrize(
+    "ar_steps,num_past_forcing_steps,num_future_forcing_steps",
+    SCENARIOS,
+)
+def test_state_analysis_boundary_forecast(
+    ar_steps, num_past_forcing_steps, num_future_forcing_steps
+):
+    """
+    Test scenario where interior is analysis, but boundary forcing forecast
+    """
+    # Constants for forecast data
+    ANALYSIS_TIMES = np.datetime64("2020-01-01", "D") + np.arange(
+        len(STATE_VALUES_FORECAST)
+    )  # One per day
+    ELAPSED_FORECAST_DURATION = np.timedelta64(0, "D") + np.arange(
+        # Retrieving the first analysis_time
+        len(FORCING_VALUES_FORECAST[0])
+    )  # Time steps of 1 day
+
+    # state and forcing variables have only one dimension, `time`
+    interior_time_values = np.datetime64("2020-01-01") + np.arange(
+        len(STATE_VALUES)
+    )
+    assert len(STATE_VALUES) == len(FORCING_VALUES) == len(interior_time_values)
+
+    # Create an interior dummy datastore with analysis data
+    interior_datastore = SinglePointDummyDatastore(
+        state_data=STATE_VALUES,
+        forcing_data=FORCING_VALUES,
+        time_values=interior_time_values,  # Same analysis times
+        is_forecast=False,
+    )
+
+    # Create a boundary dummy datastore with forecast data
+    boundary_time_values = (ANALYSIS_TIMES, ELAPSED_FORECAST_DURATION)
+    boundary_datastore = SinglePointDummyDatastore(
+        state_data=STATE_VALUES_FORECAST,
+        forcing_data=FORCING_VALUES_FORECAST,
+        time_values=boundary_time_values,
+        is_forecast=True,
+    )
+
+    dataset = WeatherDataset(
+        datastore=interior_datastore,
+        datastore_boundary=boundary_datastore,
+        split="train",
+        ar_steps=ar_steps,
+        num_past_forcing_steps=num_past_forcing_steps,
+        num_future_forcing_steps=num_future_forcing_steps,
+        standardize=False,
+    )
+
+    # Test the dataset length
+    # TODO Should this hold?
+    assert len(dataset) == len(ANALYSIS_TIMES)
+
+    sample = dataset[0]
+
+    init_states, target_states, forcing, boundary, _ = [
+        tensor.numpy() for tensor in sample
+    ]
+
+    # TODO Check below
+    # Compute expected initial states and target states based on ar_steps
+    offset = max(0, num_past_forcing_steps - INIT_STEPS)
+    init_idx = INIT_STEPS + offset
+    # Retrieving the first analysis_time
+    expected_init_states = STATE_VALUES_FORECAST[0][offset:init_idx]
+    expected_target_states = STATE_VALUES_FORECAST[0][
+        init_idx : init_idx + ar_steps
+    ]
+
+    # TODO Check below
+    # Compute expected forcing values based on num_past_forcing_steps and
+    # num_future_forcing_steps
+    expected_forcing_values = []
+    for i in range(ar_steps):
+        start_idx = i + init_idx - num_past_forcing_steps
+        end_idx = i + init_idx + num_future_forcing_steps + 1
+        # Retrieving the analysis_time relevant for forcing-windows (i.e.
+        # the first analysis_time after the 2 init_steps)
+        forcing_window = FORCING_VALUES_FORECAST[INIT_STEPS][start_idx:end_idx]
+        expected_forcing_values.append(forcing_window)
+
+    # init_states: (2, N_grid, d_features)
+    # target_states: (ar_steps, N_grid, d_features)
+    # forcing: (ar_steps, N_grid, d_windowed_forcing * 2)
+    # target_times: (ar_steps,)
+
+    # Assertions
+    np.testing.assert_array_equal(init_states[:, 0, 0], expected_init_states)
+    np.testing.assert_array_equal(
+        target_states[:, 0, 0], expected_target_states
+    )
+    # TODO Also check boundary
+
+    # Verify the shape of the forcing data
+    total_forcing_window = num_past_forcing_steps + num_future_forcing_steps + 1
+    expected_forcing_shape = (
+        ar_steps,  # Number of AR steps
+        1,  # Number of grid points
+        total_forcing_window,  # Total number of forcing steps in the window
+        # no time deltas for interior forcing
+    )
+    assert forcing.shape == expected_forcing_shape
+
+    # Extract the forcing values from the tensor (excluding time deltas)
+    forcing_values = forcing[:, 0, :total_forcing_window]
+
+    # Compare with expected forcing values
+    for i in range(ar_steps):
+        np.testing.assert_array_equal(
+            forcing_values[i], expected_forcing_values[i]
         )

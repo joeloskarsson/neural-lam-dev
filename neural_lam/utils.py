@@ -420,17 +420,37 @@ def check_time_overlap(
 
     if da2_is_forecast:
         times_da2 = da2.analysis_time
-        _ = get_time_step(da2.elapsed_forecast_duration)
+        time_step_da2 = get_time_step(times_da2.values)
+
+        # Absolutely first and last valid time we have some forecast for
+        time_min_da2 = (
+            times_da2.min().values + da2.elapsed_forecast_duration.min().values
+        )
+        time_max_da2 = (
+            times_da2.max().values + da2.elapsed_forecast_duration.max().values
+        )
+
+        # NOTE: We do not check anything related to ar_steps here, if the
+        # requested number of ar_steps can be forced by one forecast from da2
+
+        # TODO
+        # Calculate required bounds for da2 using its time step
+        # Always needs 1 past step, as we want to use fc started before current
+        # initialization time
+        da2_required_time_min = (
+            time_min_da1 - max(num_past_steps, 1) * time_step_da2
+        )
+        da2_required_time_max = time_max_da1 + num_future_steps * time_step_da2
     else:
         times_da2 = da2.time
         time_step_da2 = get_time_step(times_da2.values)
 
-    time_min_da2 = times_da2.min().values
-    time_max_da2 = times_da2.max().values
+        time_min_da2 = times_da2.min().values
+        time_max_da2 = times_da2.max().values
 
-    # Calculate required bounds for da2 using its time step
-    da2_required_time_min = time_min_da1 - num_past_steps * time_step_da2
-    da2_required_time_max = time_max_da1 + num_future_steps * time_step_da2
+        # Calculate required bounds for da2 using its time step
+        da2_required_time_min = time_min_da1 - num_past_steps * time_step_da2
+        da2_required_time_max = time_max_da1 + num_future_steps * time_step_da2
 
     if time_min_da2 > da2_required_time_min:
         raise ValueError(
