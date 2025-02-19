@@ -501,6 +501,8 @@ def crop_time_if_needed(
         The cropped first DataArray and print a warning if any steps are
         removed.
     """
+    # NOTE: Now this does not consider the ar_step at the end,
+    # or the 2 init steps
     if da1 is None or da2 is None:
         return da1
 
@@ -527,15 +529,19 @@ def crop_time_if_needed(
             da2_tvals = da2.time.values
 
         # Calculate how many steps we would have to remove
+        da2_dt = get_time_step(da2_tvals)
         if da2_is_forecast:
-            # The windowing for forecast type data happens in the
-            # elapsed_forecast_duration dimension, so we can omit it here.
-            required_min = da2_tvals[0]
-            required_max = da2_tvals[-1]
+            da1_dt = get_time_step(da1_tvals)
+            # analysis time of boundary forecast must start this much earlier
+            # than da1 timestep
+            analysis_offset = da1_dt + num_past_steps * da2_dt
+            required_min = da2_tvals[0] + analysis_offset
+            required_max = da2_tvals[-1] + analysis_offset
+
+            print(f"require: {required_min} to {required_max}")
         else:
-            dt = get_time_step(da2_tvals)
-            required_min = da2_tvals[0] + num_past_steps * dt
-            required_max = da2_tvals[-1] - num_future_steps * dt
+            required_min = da2_tvals[0] + num_past_steps * da2_dt
+            required_max = da2_tvals[-1] - num_future_steps * da2_dt
 
         # Calculate how many steps to remove at beginning and end
         first_valid_idx = (da1_tvals >= required_min).argmax()

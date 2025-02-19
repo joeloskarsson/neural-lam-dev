@@ -299,6 +299,18 @@ class WeatherDataset(torch.utils.data.Dataset):
                 num_future_steps=self.num_future_boundary_steps,
             )
 
+        # check that also after cropping we have a non-zero amount of samples
+        if self.__len__() <= 0:
+            raise ValueError(
+                "The provided datastore (after cropping) only provides "
+                f"{len(self.da_state.time)} total time steps, which is too few "
+                "to create a single sample for the WeatherDataset "
+                f"configuration used in the `{split}` split. You could try "
+                "either reducing the number of autoregressive steps "
+                "(`ar_steps`) and/or the forcing window size "
+                "(`num_past_forcing_steps` and `num_future_forcing_steps`)"
+            )
+
         # Set up for standardization
         # TODO: This will become part of ar_model.py soon!
         self.standardize = standardize

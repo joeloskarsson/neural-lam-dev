@@ -557,7 +557,8 @@ def test_state_analysis_boundary_forecast(
     )  # Time steps of 1 day
 
     # state and forcing variables have only one dimension, `time`
-    interior_time_values = np.datetime64("2020-01-01") + np.arange(
+    # NOTE: Started 2 days after
+    interior_time_values = np.datetime64("2020-01-03") + np.arange(
         len(STATE_VALUES)
     )
     assert len(STATE_VALUES) == len(FORCING_VALUES) == len(interior_time_values)
@@ -591,7 +592,7 @@ def test_state_analysis_boundary_forecast(
 
     # Test the dataset length
     # TODO Should this hold?
-    assert len(dataset) == len(ANALYSIS_TIMES)
+    assert len(dataset) == len(ANALYSIS_TIMES) - num_past_forcing_steps - 1
 
     sample = dataset[0]
 
