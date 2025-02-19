@@ -10,6 +10,10 @@ sweeps
 *.html
 *.zarr
 *slurm*
+*.png
+*.csv
+*.tex
+*test*
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
