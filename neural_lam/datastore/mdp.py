@@ -93,6 +93,10 @@ class MDPDatastore(BaseRegularGridDatastore):
             da_split_end = da_split.sel(split_part="end").load().item()
             print(f" {split:<8s}: {da_split_start} to {da_split_end}")
 
+        self.is_forecast = "elapsed_forecast_duration" in self._ds.dims
+        if self.is_forecast:
+            print("Datastore contains forecasts")
+
         # find out the dimension order for the stacking to grid-index
         dim_order = None
         for input_dataset in self._config.inputs.values():
@@ -140,7 +144,8 @@ class MDPDatastore(BaseRegularGridDatastore):
             The length of the time steps in hours.
 
         """
-        da_dt = self._ds["time"].diff("time")
+        diff_dim = "elapsed_forecast_duration" if self.is_forecast else "time"
+        da_dt = self._ds[diff_dim].diff("time")
         return (da_dt.dt.seconds[0] // 3600).item()
 
     def get_vars_units(self, category: str) -> List[str]:
@@ -264,13 +269,15 @@ class MDPDatastore(BaseRegularGridDatastore):
         # set multi-index for grid-index
         da_category = da_category.set_index(grid_index=self.CARTESIAN_COORDS)
 
-        if "time" in da_category.dims:
+        temporal_dim = "analysis_time" if self.is_forecast else "time"
+
+        if temporal_dim in da_category.dims:
             da_split = self._ds.splits.sel(split_name=split)
             if "grid_index" in da_split.coords:
                 da_split = da_split.isel(grid_index=0)
             t_start = da_split.sel(split_part="start").load().item()
             t_end = da_split.sel(split_part="end").load().item()
-            da_category = da_category.sel(time=slice(t_start, t_end))
+            da_category = da_category.sel({temporal_dim: slice(t_start, t_end)})
 
         dim_order = self.expected_dim_order(category=category)
         da_category = da_category.transpose(*dim_order)
