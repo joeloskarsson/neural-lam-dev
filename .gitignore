@@ -14,6 +14,7 @@ sweeps
 *.csv
 *.tex
 *test*
+*wfigures.ipynb
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
