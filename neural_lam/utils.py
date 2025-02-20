@@ -531,11 +531,17 @@ def crop_time_if_needed(
         # Calculate how many steps to remove at beginning and end
         first_valid_idx = (da1_tvals >= required_min).argmax()
         n_removed_begin = first_valid_idx
-        last_valid_idx_plus_one = (
-            da1_tvals > required_max
-        ).argmax()  # To use for slice
-        n_removed_begin = first_valid_idx
-        n_removed_end = len(da1_tvals) - last_valid_idx_plus_one
+        if da1_tvals[-1] > required_max:
+            # Do cropping at the end
+            last_valid_idx_plus_one = (
+                da1_tvals > required_max
+            ).argmax()  # To use for slice
+            n_removed_end = len(da1_tvals) - last_valid_idx_plus_one
+        else:
+            # da1 ends before required_max
+            last_valid_idx_plus_one = None  # slice without endpoint
+            n_removed_end = 0
+
         if n_removed_begin > 0 or n_removed_end > 0:
             print(
                 f"Warning: cropping da1 (e.g. 'state') to align with da2 "

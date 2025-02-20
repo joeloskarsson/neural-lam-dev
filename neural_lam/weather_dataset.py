@@ -581,6 +581,7 @@ class WeatherDataset(torch.utils.data.Dataset):
                         forcing_lead_i_init + step_idx * subsample_step
                     ]
                 )
+                # TODO this assert does not really have to hold
                 assert current_time == state_times[1 + step_idx]
 
                 da_sliced = da_forcing.isel(
