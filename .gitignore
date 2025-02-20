@@ -15,6 +15,7 @@ sweeps
 *.tex
 *test*
 *wfigures.ipynb
+*.pdf
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
