@@ -561,16 +561,34 @@ class WeatherDataset(torch.utils.data.Dataset):
                 )
             ).astype(int)
 
+            forcing_first_valid_time = (
+                forcing_analysis_time
+                + da_forcing.elapsed_forecast_duration[forcing_lead_i_init]
+            )
+            # How far "behind" the init time do forcing times start from
+            start_time_delay_fraction = (
+                model_init_time - forcing_first_valid_time
+            ) / self.forecast_step_boundary
+
             # Adjust window indices for subsampled steps
             for step_idx in range(len(state_times) - init_steps):
+                # Figure out how many steps to offset window,
+                # if time steps don't align this is not step_idx steps
+
+                step_window_offset = np.floor(
+                    start_time_delay_fraction
+                    + step_idx
+                    * self.time_step_state
+                    / self.forecast_step_boundary
+                ).astype(int)
                 window_start = (
                     forcing_lead_i_init
-                    + step_idx * subsample_step
+                    + step_window_offset
                     - num_past_steps * subsample_step
                 ).values
                 window_end = (
                     forcing_lead_i_init
-                    + step_idx * subsample_step
+                    + step_window_offset
                     + (num_future_steps + 1) * subsample_step
                 ).values
 
@@ -578,11 +596,28 @@ class WeatherDataset(torch.utils.data.Dataset):
                 current_time = (
                     forcing_analysis_time
                     + da_forcing.elapsed_forecast_duration[
-                        forcing_lead_i_init + step_idx * subsample_step
+                        forcing_lead_i_init + step_window_offset
                     ]
                 )
-                # TODO this assert does not really have to hold
-                assert current_time == state_times[1 + step_idx]
+
+                # Check that boundary and state times align
+                # They do not have to be the same, but boundary time should
+                # not be less than a boundary time step before state time
+                cur_state_time = state_times[1 + step_idx]
+
+                assert current_time <= cur_state_time, (
+                    "Mismatch in boundary (forecast) and interior state times:"
+                    f"boundary forcing at time {current_time.values}"
+                    f"matched to state time {cur_state_time.values}"
+                )
+                boundary_state_time_diff = cur_state_time - current_time
+                assert (current_time <= cur_state_time) and (
+                    boundary_state_time_diff < self.forecast_step_boundary
+                ), (
+                    "Mismatch in boundary (forecast) and interior state times:"
+                    f"boundary forcing at time {current_time.values}"
+                    f"matched to state time {cur_state_time.values}"
+                )
 
                 da_sliced = da_forcing.isel(
                     analysis_time=forcing_analysis_time_idx,
