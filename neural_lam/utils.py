@@ -420,33 +420,20 @@ def check_time_overlap(
 
     if da2_is_forecast:
         times_da2 = da2.analysis_time
-        time_step_da2 = get_time_step(times_da2.values)
-
-        # Absolutely first and last valid time we have some forecast for
-        time_min_da2 = (
-            times_da2.min().values + da2.elapsed_forecast_duration.min().values
-        )
-        time_max_da2 = (
-            times_da2.max().values + da2.elapsed_forecast_duration.max().values
-        )
-
-        # NOTE: We do not check anything related to ar_steps here, if the
-        # requested number of ar_steps can be forced by one forecast from da2
-
-        # TODO
-        # Calculate required bounds for da2 using its time step
-        # Always needs 1 past step, as we want to use fc started before current
-        # initialization time
-        da2_required_time_min = (
-            time_min_da1 - max(num_past_steps, 1) * time_step_da2
-        )
-        da2_required_time_max = time_max_da1 + num_future_steps * time_step_da2
-    else:
-        times_da2 = da2.time
-        time_step_da2 = get_time_step(times_da2.values)
-
         time_min_da2 = times_da2.min().values
         time_max_da2 = times_da2.max().values
+
+        time_step_da2 = get_time_step(times_da2.values)
+        time_step_da1 = get_time_step(times_da1.values)
+
+        analysis_offset = time_step_da1 + num_past_steps * time_step_da2
+        da2_required_time_min = time_min_da1 - analysis_offset
+        da2_required_time_max = time_max_da1 - analysis_offset
+    else:
+        times_da2 = da2.time
+        time_min_da2 = times_da2.min().values
+        time_max_da2 = times_da2.max().values
+        time_step_da2 = get_time_step(times_da2.values)
 
         # Calculate required bounds for da2 using its time step
         da2_required_time_min = time_min_da1 - num_past_steps * time_step_da2
@@ -537,8 +524,6 @@ def crop_time_if_needed(
             analysis_offset = da1_dt + num_past_steps * da2_dt
             required_min = da2_tvals[0] + analysis_offset
             required_max = da2_tvals[-1] + analysis_offset
-
-            print(f"require: {required_min} to {required_max}")
         else:
             required_min = da2_tvals[0] + num_past_steps * da2_dt
             required_max = da2_tvals[-1] - num_future_steps * da2_dt

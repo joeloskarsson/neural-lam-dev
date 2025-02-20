@@ -121,11 +121,18 @@ STATE_VALUES_FORECAST = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],  # Analysis time 0
     [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],  # Analysis time 1
     [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],  # Analysis time 2
+    [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],  # Analysis time 3
+    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],  # Analysis time 4
+    [50, 51, 52, 53, 54, 55, 56, 57, 58, 59],  # Analysis time 5
 ]
+
 FORCING_VALUES_FORECAST = [
     [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],  # Analysis time 0
     [110, 111, 112, 113, 114, 115, 116, 117, 118, 119],  # Analysis time 1
     [120, 121, 122, 123, 124, 125, 126, 127, 128, 129],  # Analysis time 2
+    [130, 131, 132, 133, 134, 135, 136, 137, 138, 139],  # Analysis time 3
+    [140, 141, 142, 143, 144, 145, 146, 147, 148, 149],  # Analysis time 4
+    [150, 151, 152, 153, 154, 155, 156, 157, 158, 159],  # Analysis time 5
 ]
 
 SCENARIOS = [
@@ -538,18 +545,40 @@ def test_time_deltas_in_boundary_data(
 
 
 @pytest.mark.parametrize(
-    "ar_steps,num_past_forcing_steps,num_future_forcing_steps",
-    SCENARIOS,
+    (
+        "ar_steps,num_past_boundary_steps,num_future_boundary_steps,"
+        "num_past_forcing_steps,num_future_forcing_steps"
+    ),
+    [
+        [2, 0, 0, 0, 0],
+        [2, 1, 0, 0, 1],
+        [2, 2, 0, 1, 0],
+        [2, 0, 1, 1, 1],
+        [2, 0, 2, 0, 1],
+        [2, 1, 1, 0, 1],
+        [2, 2, 1, 0, 1],
+        [2, 1, 2, 0, 0],
+        [2, 1, 3, 1, 0],
+        [2, 2, 2, 0, 0],
+        [2, 2, 3, 0, 0],
+    ],
 )
 def test_state_analysis_boundary_forecast(
-    ar_steps, num_past_forcing_steps, num_future_forcing_steps
+    ar_steps,
+    num_past_boundary_steps,
+    num_future_boundary_steps,
+    num_past_forcing_steps,
+    num_future_forcing_steps,
 ):
     """
     Test scenario where interior is analysis, but boundary forcing forecast
     """
     # Constants for forecast data
-    ANALYSIS_TIMES = np.datetime64("2020-01-01", "D") + np.arange(
-        len(STATE_VALUES_FORECAST)
+    # Offset so that first forecast is for first analysis time
+    ANALYSIS_TIMES = (
+        np.datetime64("2020-01-01", "D")
+        - (1 + num_past_boundary_steps)
+        + np.arange(len(STATE_VALUES_FORECAST))
     )  # One per day
     ELAPSED_FORECAST_DURATION = np.timedelta64(0, "D") + np.arange(
         # Retrieving the first analysis_time
@@ -557,8 +586,7 @@ def test_state_analysis_boundary_forecast(
     )  # Time steps of 1 day
 
     # state and forcing variables have only one dimension, `time`
-    # NOTE: Started 2 days after
-    interior_time_values = np.datetime64("2020-01-03") + np.arange(
+    interior_time_values = np.datetime64("2020-01-01") + np.arange(
         len(STATE_VALUES)
     )
     assert len(STATE_VALUES) == len(FORCING_VALUES) == len(interior_time_values)
@@ -587,52 +615,55 @@ def test_state_analysis_boundary_forecast(
         ar_steps=ar_steps,
         num_past_forcing_steps=num_past_forcing_steps,
         num_future_forcing_steps=num_future_forcing_steps,
+        num_past_boundary_steps=num_past_boundary_steps,
+        num_future_boundary_steps=num_future_boundary_steps,
         standardize=False,
     )
 
     # Test the dataset length
-    # TODO Should this hold?
-    assert len(dataset) == len(ANALYSIS_TIMES) - num_past_forcing_steps - 1
-
+    # After cropping I will have as many interior time steps as I have
+    # boundary forecast analysis times
+    assert (
+        len(dataset)
+        == len(ANALYSIS_TIMES)
+        - max(2, num_past_forcing_steps)
+        - ar_steps
+        - num_future_forcing_steps
+    )
     sample = dataset[0]
 
     init_states, target_states, forcing, boundary, _ = [
         tensor.numpy() for tensor in sample
     ]
 
-    # TODO Check below
+    # init_states: (2, N_grid, d_features)
+    # target_states: (ar_steps, N_grid, d_features)
+    # forcing: (ar_steps, N_grid, d_windowed_forcing * 2)
+    # target_times: (ar_steps,)
+
     # Compute expected initial states and target states based on ar_steps
     offset = max(0, num_past_forcing_steps - INIT_STEPS)
     init_idx = INIT_STEPS + offset
     # Retrieving the first analysis_time
-    expected_init_states = STATE_VALUES_FORECAST[0][offset:init_idx]
-    expected_target_states = STATE_VALUES_FORECAST[0][
-        init_idx : init_idx + ar_steps
-    ]
+    expected_init_states = STATE_VALUES[offset:init_idx]
+    expected_target_states = STATE_VALUES[init_idx : init_idx + ar_steps]
 
-    # TODO Check below
-    # Compute expected forcing values based on num_past_forcing_steps and
-    # num_future_forcing_steps
+    # Assertions for init and target
+    np.testing.assert_array_equal(init_states[:, 0, 0], expected_init_states)
+    np.testing.assert_array_equal(
+        target_states[:, 0, 0], expected_target_states
+    )
+
+    # Compute expected forcing values based on num_past_boundary_steps and
+    # num_future_boundary_steps
     expected_forcing_values = []
     for i in range(ar_steps):
         start_idx = i + init_idx - num_past_forcing_steps
         end_idx = i + init_idx + num_future_forcing_steps + 1
         # Retrieving the analysis_time relevant for forcing-windows (i.e.
         # the first analysis_time after the 2 init_steps)
-        forcing_window = FORCING_VALUES_FORECAST[INIT_STEPS][start_idx:end_idx]
+        forcing_window = FORCING_VALUES[start_idx:end_idx]
         expected_forcing_values.append(forcing_window)
-
-    # init_states: (2, N_grid, d_features)
-    # target_states: (ar_steps, N_grid, d_features)
-    # forcing: (ar_steps, N_grid, d_windowed_forcing * 2)
-    # target_times: (ar_steps,)
-
-    # Assertions
-    np.testing.assert_array_equal(init_states[:, 0, 0], expected_init_states)
-    np.testing.assert_array_equal(
-        target_states[:, 0, 0], expected_target_states
-    )
-    # TODO Also check boundary
 
     # Verify the shape of the forcing data
     total_forcing_window = num_past_forcing_steps + num_future_forcing_steps + 1
@@ -652,3 +683,5 @@ def test_state_analysis_boundary_forecast(
         np.testing.assert_array_equal(
             forcing_values[i], expected_forcing_values[i]
         )
+
+    # TODO Also check boundary
