@@ -578,9 +578,10 @@ class WeatherDataset(torch.utils.data.Dataset):
                 current_time = (
                     forcing_analysis_time
                     + da_forcing.elapsed_forecast_duration[
-                        step_idx * subsample_step
+                        forcing_lead_i_init + step_idx * subsample_step
                     ]
                 )
+                assert current_time == state_times[1 + step_idx]
 
                 da_sliced = da_forcing.isel(
                     analysis_time=forcing_analysis_time_idx,
