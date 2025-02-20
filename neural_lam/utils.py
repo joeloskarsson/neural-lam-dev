@@ -426,7 +426,7 @@ def check_time_overlap(
         time_step_da2 = get_time_step(times_da2.values)
         time_step_da1 = get_time_step(times_da1.values)
 
-        analysis_offset = time_step_da1 + num_past_steps * time_step_da2
+        analysis_offset = max(time_step_da1, num_past_steps * time_step_da2)
         da2_required_time_min = time_min_da1 - analysis_offset
         da2_required_time_max = time_max_da1 - analysis_offset
     else:
@@ -521,7 +521,7 @@ def crop_time_if_needed(
             da1_dt = get_time_step(da1_tvals)
             # analysis time of boundary forecast must start this much earlier
             # than da1 timestep
-            analysis_offset = da1_dt + num_past_steps * da2_dt
+            analysis_offset = max(da1_dt, num_past_steps * da2_dt)
             required_min = da2_tvals[0] + analysis_offset
             required_max = da2_tvals[-1] + analysis_offset
         else:

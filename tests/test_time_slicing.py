@@ -577,7 +577,7 @@ def test_state_analysis_boundary_forecast(
     # Offset so that first forecast is for first analysis time
     ANALYSIS_TIMES = (
         np.datetime64("2020-01-01", "D")
-        - (1 + num_past_boundary_steps)
+        - max(1, num_past_boundary_steps)
         + np.arange(len(STATE_VALUES_FORECAST))
     )  # One per day
     ELAPSED_FORECAST_DURATION = np.timedelta64(0, "D") + np.arange(
@@ -638,8 +638,9 @@ def test_state_analysis_boundary_forecast(
 
     # init_states: (2, N_grid, d_features)
     # target_states: (ar_steps, N_grid, d_features)
-    # forcing: (ar_steps, N_grid, d_windowed_forcing * 2)
+    # forcing: (ar_steps, N_grid, d_windowed_forcing)
     # target_times: (ar_steps,)
+    # boundary: (ar_steps, N_grid, d_windowed_boundary)
 
     # Compute expected initial states and target states based on ar_steps
     offset = max(0, num_past_forcing_steps - INIT_STEPS)
@@ -684,4 +685,38 @@ def test_state_analysis_boundary_forecast(
             forcing_values[i], expected_forcing_values[i]
         )
 
-    # TODO Also check boundary
+    # Check shape and values of boundary
+    expected_boundary_values = []
+    total_boundary_window = (
+        num_past_boundary_steps + num_future_boundary_steps + 1
+    )
+    for i in range(ar_steps):
+        # The way we set this up the first forecast will always match sample 0
+        # The boundary forcing window goes from lead time 0 onward
+        first_i = 1 if num_past_boundary_steps == 0 else 0
+        # While first n forecasts match first n state times,
+        # we do not use first state time as init
+        state_init_index = 1
+        boundary_window = FORCING_VALUES_FORECAST[state_init_index][
+            first_i + i : first_i + i + total_boundary_window
+        ]
+        expected_boundary_values.append(boundary_window)
+
+    # Verify the shape of the boundary data
+    expected_boundary_shape = (
+        ar_steps,  # Number of AR steps
+        1,  # Number of grid points
+        total_boundary_window + total_boundary_window,
+        # Total number of boundary steps in the window, includes
+        # total_boundary_window time deltas
+    )
+    assert boundary.shape == expected_boundary_shape
+
+    # Extract the boundary values from the tensor (excluding time deltas)
+    boundary_values = boundary[:, 0, :total_boundary_window]
+
+    # Compare with expected boundary values
+    for i in range(ar_steps):
+        np.testing.assert_array_equal(
+            boundary_values[i], expected_boundary_values[i]
+        )
