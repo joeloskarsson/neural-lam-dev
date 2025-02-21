@@ -13,7 +13,7 @@ DATASTORES = {
 }
 
 
-def init_datastore(datastore_kind, config_path):
+def init_datastore(datastore_kind, **kwargs):
     DatastoreClass = DATASTORES.get(datastore_kind)
 
     if DatastoreClass is None:
@@ -21,6 +21,6 @@ def init_datastore(datastore_kind, config_path):
             f"Datastore kind {datastore_kind} is not implemented"
         )
 
-    datastore = DatastoreClass(config_path=config_path)
+    datastore = DatastoreClass(**kwargs)
 
     return datastore
