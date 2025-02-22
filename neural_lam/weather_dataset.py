@@ -514,7 +514,7 @@ class WeatherDataset(torch.utils.data.Dataset):
         # might be dealing with a datastore_boundary
         if "analysis_time" in da_forcing.dims:
             # For forecast data with analysis_time and elapsed_forecast_duration
-            # Select the closest analysis_time in the past(strictly) in the
+            # Select the closest analysis_time in the past (strictly) in the
             # boundary data
             model_init_time = state_times[init_steps - 1].values
             # Find first index before
