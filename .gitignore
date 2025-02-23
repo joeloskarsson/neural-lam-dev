@@ -13,7 +13,6 @@ sweeps
 *.png
 *.csv
 *.tex
-*test*
 *wfigures.ipynb
 *.pdf
 
