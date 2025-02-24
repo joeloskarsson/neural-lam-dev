@@ -219,7 +219,10 @@ class WeatherDataset(torch.utils.data.Dataset):
             )
         else:
             state_times = self.da_state.time
-        self.time_step_state = get_time_step(state_times)
+        self.orig_time_step_state = get_time_step(state_times)
+        self.time_step_state = (
+            self.interior_subsample_step * self.orig_time_step_state
+        )
         # FORCING
         if self.da_forcing is not None:
             if self.datastore.is_forecast:
@@ -229,16 +232,21 @@ class WeatherDataset(torch.utils.data.Dataset):
                 )
             else:
                 forcing_times = self.da_forcing.time
-            self.time_step_forcing = get_time_step(forcing_times.values)
+            self.time_step_forcing = (
+                self.boundary_subsample_step
+                * get_time_step(forcing_times.values)
+            )
         # inform user about the original and the subsampled time step
         if self.interior_subsample_step != 1:
             print(
                 f"Subsampling interior data with step size "
                 f"{self.interior_subsample_step} from original time step "
-                f"{self.time_step_state}"
+                f"{self.orig_time_step_state}"
             )
         else:
-            print(f"Using original time step {self.time_step_state} for data")
+            print(
+                f"Using original time step {self.orig_time_step_state} for data"
+            )
 
         # BOUNDARY FORCING
         if self.da_boundary_forcing is not None:
@@ -289,6 +297,18 @@ class WeatherDataset(torch.utils.data.Dataset):
                 da2_is_forecast=self.datastore_boundary.is_forecast,
                 num_past_steps=self.num_past_boundary_steps,
                 num_future_steps=self.num_future_boundary_steps,
+            )
+
+        # check that also after cropping we have a non-zero amount of samples
+        if self.__len__() <= 0:
+            raise ValueError(
+                "The provided datastore (after cropping) only provides "
+                f"{len(self.da_state.time)} total time steps, which is too few "
+                "to create a single sample for the WeatherDataset "
+                f"configuration used in the `{split}` split. You could try "
+                "either reducing the number of autoregressive steps "
+                "(`ar_steps`) and/or the forcing window size "
+                "(`num_past_forcing_steps` and `num_future_forcing_steps`)"
             )
 
         # Set up for standardization
@@ -494,32 +514,109 @@ class WeatherDataset(torch.utils.data.Dataset):
         # might be dealing with a datastore_boundary
         if "analysis_time" in da_forcing.dims:
             # For forecast data with analysis_time and elapsed_forecast_duration
-            # Select the closest analysis_time in the past in the
-            # forcing/boundary data
-            offset = max(0, num_past_steps - init_steps)
-            state_time = state_times[init_steps].values
+            # Select the closest analysis_time in the past (strictly) in the
+            # boundary data
+            model_init_time = state_times[init_steps - 1].values
+            # Find first index before
             forcing_analysis_time_idx = da_forcing.analysis_time.get_index(
                 "analysis_time"
-            ).get_indexer([state_time], method="pad")[0]
+            ).get_indexer([model_init_time], method="pad")[0]
+            forcing_analysis_time = da_forcing.analysis_time[
+                forcing_analysis_time_idx
+            ]
+            if model_init_time == forcing_analysis_time:
+                # Can not use boundary forcing initialized at same time,
+                # take one before
+                forcing_analysis_time_idx = forcing_analysis_time_idx - 1
+                forcing_analysis_time = da_forcing.analysis_time[
+                    forcing_analysis_time_idx
+                ]
+
+            # With current forcing_analysis_time_idx, how much space is there
+            # for including previous time steps
+            cur_prev_steps_in_forcing = (
+                np.floor(
+                    (model_init_time - forcing_analysis_time)
+                    / self.forecast_step_boundary
+                )
+            ).astype(int)
+
+            # There will always be space for 1 past_forcing step,
+            # but more might require using an earlier forecast
+            # We will gain 1 to possible past windowing by each index we offset
+            past_analysis_offset = num_past_steps - cur_prev_steps_in_forcing
+            if past_analysis_offset > 0:
+                forcing_analysis_time_idx = (
+                    forcing_analysis_time_idx - past_analysis_offset
+                )
+                forcing_analysis_time = da_forcing.analysis_time[
+                    forcing_analysis_time_idx
+                ]
+
+            # Index of elapsed_forecast_duration that matches model_init_time
+            forcing_lead_i_init = (
+                np.floor(
+                    (model_init_time - forcing_analysis_time)
+                    / self.forecast_step_boundary
+                )
+            ).astype(int)
+
+            forcing_first_valid_time = (
+                forcing_analysis_time
+                + da_forcing.elapsed_forecast_duration[forcing_lead_i_init]
+            )
+            # How far "behind" the init time do forcing times start from
+            start_time_delay_fraction = (
+                model_init_time - forcing_first_valid_time
+            ) / self.forecast_step_boundary
 
             # Adjust window indices for subsampled steps
-            for step_idx in range(init_steps, len(state_times)):
+            for step_idx in range(len(state_times) - init_steps):
+                # Figure out how many steps to offset window,
+                # if time steps don't align this is not step_idx steps
+
+                step_window_offset = np.floor(
+                    start_time_delay_fraction
+                    + step_idx
+                    * self.time_step_state
+                    / self.forecast_step_boundary
+                ).astype(int)
                 window_start = (
-                    offset
-                    + step_idx * subsample_step
+                    forcing_lead_i_init
+                    + step_window_offset
                     - num_past_steps * subsample_step
-                )
+                ).values
                 window_end = (
-                    offset
-                    + step_idx * subsample_step
+                    forcing_lead_i_init
+                    + step_window_offset
                     + (num_future_steps + 1) * subsample_step
+                ).values
+
+                # Time at which boundary forcing is valid
+                current_time = (
+                    forcing_analysis_time
+                    + da_forcing.elapsed_forecast_duration[
+                        forcing_lead_i_init + step_window_offset
+                    ]
                 )
 
-                current_time = (
-                    forcing_analysis_time_idx
-                    + da_forcing.elapsed_forecast_duration[
-                        step_idx * subsample_step
-                    ]
+                # Check that boundary and state times align
+                # They do not have to be the same, but boundary time should
+                # not be less than a boundary time step before state time
+                cur_state_time = state_times[1 + step_idx]
+
+                assert current_time <= cur_state_time, (
+                    "Mismatch in boundary (forecast) and interior state times:"
+                    f"boundary forcing at time {current_time.values}"
+                    f"matched to state time {cur_state_time.values}"
+                )
+                boundary_state_time_diff = cur_state_time - current_time
+                assert (current_time <= cur_state_time) and (
+                    boundary_state_time_diff < self.forecast_step_boundary
+                ), (
+                    "Mismatch in boundary (forecast) and interior state times:"
+                    f"boundary forcing at time {current_time.values}"
+                    f"matched to state time {cur_state_time.values}"
                 )
 
                 da_sliced = da_forcing.isel(
@@ -537,14 +634,17 @@ class WeatherDataset(torch.utils.data.Dataset):
                     window=np.arange(-num_past_steps, num_future_steps + 1)
                 )
                 # Calculate window time deltas for forecast data
-                window_time_deltas = (
-                    da_forcing.elapsed_forecast_duration[
+                window_times = (
+                    forcing_analysis_time
+                    + da_forcing.elapsed_forecast_duration[
                         window_start:window_end:subsample_step
-                    ].values
-                    - da_forcing.elapsed_forecast_duration[
-                        step_idx * subsample_step
-                    ].values
+                    ]
                 )
+                step_model_time = (
+                    model_init_time + step_idx * self.time_step_state
+                )
+                window_time_deltas = (window_times - step_model_time).values
+
                 # Assign window time delta coordinate
                 da_sliced["window_time_deltas"] = ("window", window_time_deltas)
 
@@ -956,6 +1056,94 @@ class WeatherDataset(torch.utils.data.Dataset):
         return da
 
 
+class EvalSubsetWrapper(torch.utils.data.Dataset):
+    """
+    A PyTorch Dataset wrapper that selects only samples with specific
+    initialization times.
+
+    Args:
+        dataset: The base dataset to wrap
+        eval_init_times: initialization times to include
+    """
+
+    def __init__(self, dataset, eval_init_times):
+        self.dataset = dataset
+        self.eval_init_times = eval_init_times
+
+        # TODO generalize class beyond 00/12 UTC
+        assert self.eval_init_times == [
+            0,
+            12,
+        ], "Only eval_init_times 00, 12 implemented"
+        valid_init_diff = 12
+
+        # Figure out which indices to use
+        first_batch = dataset[0]
+        first_init_time = self.get_utc_init_of_batch(first_batch)
+
+        # Note that we have to consider orig_time_step-state, as that is the
+        # time difference between init times in self.dataset
+        time_step_state_hour = self.dataset.orig_time_step_state.astype(
+            "timedelta64[h]"
+        ).astype(int)
+        assert (
+            valid_init_diff % time_step_state_hour == 0
+        ), "Invalid time step for eval_init_times"
+
+        # Find how many indices to skip in each step
+        self.valid_idx_interval = valid_init_diff // time_step_state_hour
+
+        # Find first valid index
+        first_valid_idx = None
+        for idx, step_offset in enumerate(range(0, 24, time_step_state_hour)):
+            # Init time in h UTC
+            potential_init_time = (first_init_time + step_offset) % 24
+            if potential_init_time in eval_init_times:
+                first_valid_idx = idx
+                break
+
+        assert first_valid_idx is not None, "Found no valid init time"
+        self.first_valid_idx = first_valid_idx
+
+    def get_utc_init_of_batch(self, batch):
+        """Get init time for batch in UTC, as int"""
+        target_times_np = batch[-1].numpy().astype("datetime64[ns]")
+        init_time = target_times_np[0] - self.dataset.orig_time_step_state
+        init_time_hour = init_time.astype("datetime64[h]").astype(int) % 24
+        return init_time_hour
+
+    def __len__(self) -> int:
+        """
+        Returns the length of the filtered dataset.
+        """
+        orig_len = len(self.dataset)
+        return np.ceil(
+            (orig_len - self.first_valid_idx) / self.valid_idx_interval
+        ).astype(int)
+
+    def __getitem__(self, idx: int):
+        """
+        Get an item from the filtered dataset.
+
+        Args:
+            idx: Index into the filtered dataset
+
+        Returns:
+            The dataset item corresponding to the filtered index
+        """
+        new_idx = self.first_valid_idx + idx * self.valid_idx_interval
+        batch = self.dataset[new_idx]
+
+        # Assert that we only do forecasts from 00 and 12 UTC
+        analysis_time_hour = self.get_utc_init_of_batch(batch)
+        assert analysis_time_hour in self.eval_init_times, (
+            "Tried to evaluate on sample with "
+            f"analysis time {analysis_time_hour}"
+        )
+
+        return batch
+
+
 class WeatherDataModule(pl.LightningDataModule):
     """DataModule for weather data."""
 
@@ -975,6 +1163,7 @@ class WeatherDataModule(pl.LightningDataModule):
         batch_size=4,
         num_workers=16,
         eval_split="test",
+        eval_init_times=[],
         excluded_intervals=None,
     ):
         super().__init__()
@@ -995,6 +1184,8 @@ class WeatherDataModule(pl.LightningDataModule):
         self.val_dataset = None
         self.test_dataset = None
         self.eval_split = eval_split
+        self.eval_init_times = eval_init_times
+
         if num_workers > 0:
             # BUG: There also seem to be issues with "spawn" and `gloo`, to be
             # investigated. Defaults to spawn for now, as the default on linux
@@ -1093,6 +1284,10 @@ class WeatherDataModule(pl.LightningDataModule):
                 interior_subsample_step=self.interior_subsample_step,
                 boundary_subsample_step=self.boundary_subsample_step,
             )
+            if self.eval_init_times:
+                self.val_dataset = EvalSubsetWrapper(
+                    self.val_dataset, self.eval_init_times
+                )
 
         if stage == "test" or stage is None:
             self.test_dataset = WeatherDataset(
@@ -1108,6 +1303,10 @@ class WeatherDataModule(pl.LightningDataModule):
                 interior_subsample_step=self.interior_subsample_step,
                 boundary_subsample_step=self.boundary_subsample_step,
             )
+            if self.eval_init_times:
+                self.test_dataset = EvalSubsetWrapper(
+                    self.test_dataset, self.eval_init_times
+                )
 
     def train_dataloader(self):
         """Load train dataset."""

@@ -72,7 +72,7 @@ def main(input_args=None):
     parser.add_argument(
         "--restore_opt",
         action="store_true",
-        help="If optimizer state should be restored with model "
+        help="If full training state should be restored with model "
         "(default: false)",
     )
     parser.add_argument(
@@ -210,6 +210,25 @@ def main(input_args=None):
         help="Number of example predictions to plot during evaluation "
         "(default: 1)",
     )
+    parser.add_argument(
+        "--eval_init_times",
+        nargs="*",
+        default=[0, 12],
+        help="List of init times (UTC) where validation and evaluation "
+        "forecasts should be started from (default: 0, 12)",
+    )
+    parser.add_argument(
+        "--save_eval_to_zarr_path",
+        type=str,
+        help="Save evaluation results to zarr dataset at given path ",
+    )
+    parser.add_argument(
+        "--plot_vars",
+        nargs="+",
+        type=str,
+        default=["t2m"],
+        help="List of variables to plot during eval (default: t2m)",
+    )
 
     # Logger Settings
     parser.add_argument(
@@ -295,6 +314,9 @@ def main(input_args=None):
             f"Can not log validation step {step} when validation is "
             f"only unrolled {args.ar_steps_eval} steps."
         )
+    assert (
+        args.load or not args.restore_opt
+    ), "Can not restore opt state when not loading a checkpoint"
 
     # Get an (actual) random run id as a unique identifier
     random_run_id = random.randint(0, 9999)
@@ -324,6 +346,7 @@ def main(input_args=None):
         num_workers=args.num_workers,
         # Make sure that dataset provided for eval contains correct split
         eval_split=args.eval if args.eval is not None else "test",
+        eval_init_times=args.eval_init_times,
         excluded_intervals=config.training.excluded_intervals,
     )
 
@@ -338,12 +361,22 @@ def main(input_args=None):
 
     # Load model parameters Use new args for model
     ModelClass = MODELS[args.model]
-    model = ModelClass(
-        args,
-        config=config,
-        datastore=datastore,
-        datastore_boundary=datastore_boundary,
-    )
+    if args.load and not args.restore_opt:
+        # Restore only model weights, not opt setup
+        model = ModelClass.load_from_checkpoint(
+            args.load,
+            args=args,
+            config=config,
+            datastore=datastore,
+            datastore_boundary=datastore_boundary,
+        )
+    else:
+        model = ModelClass(
+            args,
+            config=config,
+            datastore=datastore,
+            datastore_boundary=datastore_boundary,
+        )
 
     if args.eval:
         prefix = f"eval-{args.eval}-"
@@ -411,7 +444,9 @@ def main(input_args=None):
     if args.eval:
         trainer.test(model=model, datamodule=data_module, ckpt_path=args.load)
     else:
-        trainer.fit(model=model, datamodule=data_module, ckpt_path=args.load)
+        # Only feed fit method with checkpoint path if restore_opt
+        ckpt_for_fit = args.load if args.restore_opt else None
+        trainer.fit(model=model, datamodule=data_module, ckpt_path=ckpt_for_fit)
 
 
 if __name__ == "__main__":
