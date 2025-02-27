@@ -35,7 +35,8 @@ graph = [
     "networkx>=3.0",
     "plotly>=5.15.0",
     "graphcast @ https://github.com/deepmind/graphcast/archive/master.zip",
-    "trimesh"
+    "trimesh",
+    "spherical_geometry>=1.3.2"
 ]
 
 [tool.setuptools]

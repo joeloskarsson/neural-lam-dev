@@ -143,3 +143,41 @@ def in_mesh_triangle_indices_irregular(
     mesh_edge_indices = mesh_edge_indices.reshape([-1])
     grid_edge_indices = grid_edge_indices.reshape([-1])
     return grid_edge_indices, mesh_edge_indices
+
+
+def subset_mesh_to_chull(spherical_chull, mesh_graph):
+    """
+    Subset the set of nodes and faces in a mesh graph to those fully within
+    given spherical chull.
+
+    Args:
+        spherical_chull : spherical_geometry.SphericalPolygon
+        mesh_graph : trimesh.Trimesh
+
+    Returns
+        subsetted_graph : trimesh.Trimesh
+    """
+
+    def in_chull(point):
+        return spherical_chull.contains_point(point)
+
+    # Check which mesh nodes are within chull
+    node_mask = np.array([in_chull(point) for point in mesh_graph.vertices])
+    new_nodes = mesh_graph.vertices[node_mask]
+
+    # Keep only faces with all nodes within chull
+    face_mask = np.all(node_mask[mesh_graph.faces], axis=1)
+
+    # Reindex faces corner indices to subset of kept nodes
+    # Array that maps from old node indices to new ones
+    # indexing this with node index i from mesh_graph.vertices gives the
+    # corresponding new node index in new_nodes, if node i is within chull (and
+    # therefore actually present in new_nodes)
+    node_id_map = np.cumsum(node_mask) - 1
+    # Filter faces + re-map to new node indices
+    new_faces = node_id_map[mesh_graph.faces[face_mask]]
+
+    # Return filtered Trimesh, as int32 to be compatible with gc methods
+    return trimesh.Trimesh(
+        vertices=new_nodes.astype("float32"), faces=new_faces.astype("int32")
+    )

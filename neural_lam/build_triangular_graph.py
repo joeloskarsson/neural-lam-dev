@@ -7,11 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from graphcast import graphcast as gc_gc
+from spherical_geometry.polygon import SphericalPolygon
 
 # Local
 from . import utils
 from .config import load_config_and_datastores
 from .graphs import create as gcreate
+from .graphs import graph_utils as gutils
 from .graphs import vis as gvis
 
 
@@ -56,6 +58,11 @@ def main():
         action="store_true",
         help="Generate hierarchical mesh graph",
     )
+    parser.add_argument(
+        "--global",
+        action="store_true",
+        help="If the graph should be global, not cropped based on grid nodes",
+    )
     args = parser.parse_args()
 
     _, datastore, datastore_boundary = load_config_and_datastores(
@@ -82,6 +89,9 @@ def main():
     torch.save(
         grid_lat_lon_torch, os.path.join(save_dir_path, "grid_lat_lon.pt")
     )
+
+    # Workaround for global being reserved python keyword
+    global_graph = getattr(args, "global")
 
     # === Create mesh graph ===
     if args.hierarchical:
@@ -111,6 +121,23 @@ def main():
         )
         max_mesh_edge_len = gc_gc._get_max_edge_distance(mesh_list[-1])
         m2m_graphs = [merged_mesh]
+
+    if not global_graph:
+        # Crop mesh graph to convex hull of grid points
+        # Compute convex hull
+        grid_xyz = gutils.node_lat_lon_to_cart(grid_lat_lon[::50])
+        print("Cropping for LAM model. Computing convex hull...")
+        grid_chull = SphericalPolygon.convex_hull(grid_xyz)
+
+        print(
+            f"before: {m2m_graphs[0].vertices.shape[0]} nodes ({m2m_graphs[0].vertices.dtype}), {m2m_graphs[0].faces.shape[0]} faces ({m2m_graphs[0].faces.dtype})"
+        )
+        m2m_graphs = [
+            gutils.subset_mesh_to_chull(grid_chull, mesh) for mesh in m2m_graphs
+        ]
+        print(
+            f"before: {m2m_graphs[0].vertices.shape[0]} nodes ({m2m_graphs[0].vertices.dtype}), {m2m_graphs[0].faces.shape[0]} faces ({m2m_graphs[0].faces.dtype})"
+        )
 
     mesh_graph_features = [
         gcreate.create_mesh_graph_features(mesh_graph)
