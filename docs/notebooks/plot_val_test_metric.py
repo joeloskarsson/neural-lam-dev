@@ -19,14 +19,14 @@ METRICS_FILES = {
     # "7.19 ERA margin with interior - LR 1e-4 - AR 12": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135723-klfmyn8q/files/test_metrics.pkl",
     # "7.19 ERA margin with interior - LR 1e-4 - AR 6": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135727-bkrji8ip/files/test_metrics.pkl",
     # IFS BOUNDARY
-    "7.19 IFS margin with interior -- LR 0.001": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122208-9h4qffmp/files/test_metrics.pkl",
+    "7.19 IFS margin with interior": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122208-9h4qffmp/files/test_metrics.pkl",
     # "7.19 IFS margin with interior -- LR 0.0001": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122212-mllsk83b/files/test_metrics.pkl",
     # "7.19 IFS margin with interior -- LR 0.0001 -- AR 12": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122219-0c4wc8gs/files/test_metrics.pkl",
     # "7.19 IFS margin with interior -- LR 0.0001 -- AR 6": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122215-4euaxytl/files/test_metrics.pkl",
     "7.19 IFS margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122204-2po0e9pl/files/test_metrics.pkl",
     # IFS BOUNDARY BUGFIX
-    "7.19 IFS margin BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_144214-naotcg39/files/test_metrics.pkl",
-    "7.19 IFS margin with interior BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_144237-90fyq32f/files/test_metrics.pkl",
+    "7.19 IFS margin BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_173313-wvauu4xx/files/test_metrics.pkl",
+    "7.19 IFS margin with interior BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_173315-ogt0lmto/files/test_metrics.pkl",
 }
 
 VARIABLES = {
