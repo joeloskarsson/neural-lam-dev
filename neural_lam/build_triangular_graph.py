@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from graphcast import graphcast as gc_gc
-from graphcast import grid_mesh_connectivity as gc_gm
 
 # Local
 from . import utils
@@ -123,8 +122,8 @@ def main():
     for feat_index, file_name in enumerate(
         (
             "m2m_edge_index.pt",
-            "mesh_features.pt",
             "m2m_node_features.pt",
+            "m2m_features.pt",
             "mesh_lat_lon.pt",
         )
     ):
