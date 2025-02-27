@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 METRICS_FILES = {
     # "no boundary": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135811-taoe2q20/files/test_metrics.pkl",
     # "3.6 ERA margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135710-5ikae3ta/files/test_metrics.pkl",
-    # "7.19 ERA margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135748-rx3r2qc1/files/test_metrics.pkl",
+    "7.19 ERA margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135748-rx3r2qc1/files/test_metrics.pkl",
     # "7.19 ERA margin - no future boundary": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_203137-pevaufbw/files/test_metrics.pkl",
-    # "7.19 ERA margin with interior": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_094539-ve7jxmni/files/test_metrics.pkl",
+    "7.19 ERA margin with interior": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_094539-ve7jxmni/files/test_metrics.pkl",
     # "10.79 ERA margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_194442-1mrvluca/files/test_metrics.pkl",
     # "14.39 ERA margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135712-d82t2arn/files/test_metrics.pkl",
     # SUBSAMPLING
@@ -20,10 +20,13 @@ METRICS_FILES = {
     # "7.19 ERA margin with interior - LR 1e-4 - AR 6": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_135727-bkrji8ip/files/test_metrics.pkl",
     # IFS BOUNDARY
     "7.19 IFS margin with interior -- LR 0.001": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122208-9h4qffmp/files/test_metrics.pkl",
-    "7.19 IFS margin with interior -- LR 0.0001": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122212-mllsk83b/files/test_metrics.pkl",
-    "7.19 IFS margin with interior -- LR 0.0001 -- AR 12": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122219-0c4wc8gs/files/test_metrics.pkl",
-    "7.19 IFS margin with interior -- LR 0.0001 -- AR 6": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122215-4euaxytl/files/test_metrics.pkl",
-    # "7.19 IFS margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122204-2po0e9pl/files/test_metrics.pkl",
+    # "7.19 IFS margin with interior -- LR 0.0001": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122212-mllsk83b/files/test_metrics.pkl",
+    # "7.19 IFS margin with interior -- LR 0.0001 -- AR 12": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122219-0c4wc8gs/files/test_metrics.pkl",
+    # "7.19 IFS margin with interior -- LR 0.0001 -- AR 6": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122215-4euaxytl/files/test_metrics.pkl",
+    "7.19 IFS margin": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250223_122204-2po0e9pl/files/test_metrics.pkl",
+    # IFS BOUNDARY BUGFIX
+    "7.19 IFS margin BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_144214-naotcg39/files/test_metrics.pkl",
+    "7.19 IFS margin with interior BUGFIX": "/iopsstor/scratch/cscs/sadamov/pyprojects_data/neural-lam/wandb/run-20250227_144237-90fyq32f/files/test_metrics.pkl",
 }
 
 VARIABLES = {
