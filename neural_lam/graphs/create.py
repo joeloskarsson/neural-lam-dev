@@ -255,6 +255,10 @@ def create_edge_features(
         "create_edge_features"
     )
 
+    # Make sure all coords have same dtype
+    sender_coords = sender_coords.astype(np.float32)
+    receiver_coords = receiver_coords.astype(np.float32)
+
     _, _, edge_features = gc_mu.get_bipartite_graph_spatial_features(
         senders_node_lat=sender_coords[:, 0],
         senders_node_lon=sender_coords[:, 1],

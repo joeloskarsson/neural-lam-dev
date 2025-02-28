@@ -179,5 +179,6 @@ def subset_mesh_to_chull(spherical_chull, mesh_graph):
 
     # Return filtered Trimesh, as int32 to be compatible with gc methods
     return trimesh.Trimesh(
-        vertices=new_nodes.astype("float32"), faces=new_faces.astype("int32")
+        vertices=new_nodes,
+        faces=new_faces,
     )

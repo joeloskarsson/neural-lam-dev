@@ -125,19 +125,13 @@ def main():
     if not global_graph:
         # Crop mesh graph to convex hull of grid points
         # Compute convex hull
-        grid_xyz = gutils.node_lat_lon_to_cart(grid_lat_lon[::50])
+        grid_xyz = gutils.node_lat_lon_to_cart(grid_lat_lon)
         print("Cropping for LAM model. Computing convex hull...")
         grid_chull = SphericalPolygon.convex_hull(grid_xyz)
 
-        print(
-            f"before: {m2m_graphs[0].vertices.shape[0]} nodes ({m2m_graphs[0].vertices.dtype}), {m2m_graphs[0].faces.shape[0]} faces ({m2m_graphs[0].faces.dtype})"
-        )
         m2m_graphs = [
             gutils.subset_mesh_to_chull(grid_chull, mesh) for mesh in m2m_graphs
         ]
-        print(
-            f"before: {m2m_graphs[0].vertices.shape[0]} nodes ({m2m_graphs[0].vertices.dtype}), {m2m_graphs[0].faces.shape[0]} faces ({m2m_graphs[0].faces.dtype})"
-        )
 
     mesh_graph_features = [
         gcreate.create_mesh_graph_features(mesh_graph)
