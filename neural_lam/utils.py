@@ -385,6 +385,35 @@ def get_stacked_xy(datastore, datastore_boundary=None):
     return xyz[:, :2]
 
 
+def get_interior_mask(datastore, datastore_boundary):
+    """
+    Get a binary mask of same length as stacked xy or lat_lons, where a True
+    entry means that the coordinate is part of the interior.
+
+    Parameters
+    ----------
+    datastore : BaseDatastore
+        The datastore containing data for the interior region of the grid
+    datastore_boundary : BaseDatastore
+        The datastore containing data for boundary forcing
+
+    Returns
+    -------
+    interior_mask : np.ndarray[bool]
+        Array of boolean values , shaped (num_total_grid_nodes,)
+    """
+    # Construct mask to decode only to interior
+    num_interior = datastore.num_grid_points
+    num_boundary = datastore_boundary.num_grid_points
+    return np.concatenate(
+        (
+            np.ones(num_interior, dtype=bool),
+            np.zeros(num_boundary, dtype=bool),
+        ),
+        axis=0,
+    )
+
+
 def get_time_step(times):
     """Calculate the time step from a time dataarray.
 

@@ -93,6 +93,19 @@ def main():
     # Workaround for global being reserved python keyword
     global_graph = getattr(args, "global")
 
+    boundary_region = datastore_boundary is not None
+    if boundary_region:
+        # LAM setting with boundary
+        # Construct mask to decode only to interior
+        decode_mask = utils.get_interior_mask(datastore, datastore_boundary)
+        interior_lat_lon = grid_lat_lon[decode_mask]
+        boundary_lat_lon = grid_lat_lon[decode_mask]  # TODO use somehow?
+
+        # Only decode to interior
+        grid_decode_lat_lon = interior_lat_lon
+    else:
+        grid_decode_lat_lon = grid_lat_lon
+
     # === Create mesh graph ===
     if args.hierarchical:
         # Save up+down edge index + features to disk
@@ -209,19 +222,21 @@ def main():
     # Mesh2Grid: Connect from containing mesh triangle
 
     m2g_edge_index = gcreate.connect_to_grid_containing_tri(
-        grid_lat_lon, grid_con_mesh
+        grid_decode_lat_lon, grid_con_mesh
     )
 
     # Get edge features for m2g
     m2g_edge_features = gcreate.create_edge_features(
-        m2g_edge_index, receiver_coords=grid_lat_lon, sender_mesh=grid_con_mesh
+        m2g_edge_index,
+        receiver_coords=grid_decode_lat_lon,
+        sender_mesh=grid_con_mesh,
     )
 
     if args.plot:
         gvis.plot_graph(
             m2g_edge_index,
             from_node_pos=grid_con_lat_lon,
-            to_node_pos=grid_lat_lon_torch,
+            to_node_pos=torch.tensor(grid_decode_lat_lon, dtype=torch.float32),
             title="Grid2Mesh",
         )
         plt.show()
