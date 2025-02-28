@@ -77,6 +77,7 @@ def create_edge_plot(
     width=1,
     from_radius=1,
     to_radius=1,
+    pos_filter_func=None,
 ):
     """
     Create a plotly object showing edges
@@ -93,6 +94,19 @@ def create_edge_plot(
 
     edge_start = from_node_cart[edge_index[0]]  # (M, 2)
     edge_end = to_node_cart[edge_index[1]]  # (M, 2)
+
+    if pos_filter_func is not None:
+        # Filter edges
+        edge_start_lat_lon = from_node_lat_lon[edge_index[0]]  # (M, 2)
+        edge_end_lat_lon = to_node_lat_lon[edge_index[1]]  # (M, 2)
+
+        edge_mask = np.logical_and(
+            pos_filter_func(edge_start_lat_lon),
+            pos_filter_func(edge_end_lat_lon),
+        )
+        edge_start = edge_start[edge_mask]
+        edge_end = edge_end[edge_mask]
+
     n_edges = edge_start.shape[0]
 
     x_edges = np.stack(
@@ -115,7 +129,9 @@ def create_edge_plot(
     )
 
 
-def create_node_plot(node_lat_lon, label, color="blue", size=1, radius=1):
+def create_node_plot(
+    node_lat_lon, label, color="blue", size=1, radius=1, pos_filter_func=None
+):
     """
     Create a plotly object showing nodes
 
@@ -123,6 +139,10 @@ def create_node_plot(node_lat_lon, label, color="blue", size=1, radius=1):
     label: str, label of plot object
     """
     node_pos = gutils.node_lat_lon_to_cart(node_lat_lon) * radius
+    if pos_filter_func is not None:
+        # Filter nodes before plotting
+        node_pos = node_pos[pos_filter_func(node_lat_lon)]
+
     return go.Scatter3d(
         x=node_pos[:, 0],
         y=node_pos[:, 1],
@@ -159,6 +179,11 @@ def main():
         "--show_axis",
         action="store_true",
         help="If the axis should be displayed",
+    )
+    parser.add_argument(
+        "--corner_filter_radius",
+        type=float,
+        help="Filter plotted objects to within given radius of interior corner",
     )
     # Geometry
     parser.add_argument(
@@ -253,6 +278,45 @@ def main():
     grid_lat_lon = utils.get_stacked_lat_lons(datastore, datastore_boundary)
     # (num_nodes_full, 3)
 
+    # Optionally create corner filter
+    if args.corner_filter_radius is not None:
+        # Prep for filtering
+        interior_lat_lon = datastore.get_lat_lon(category="state")
+        # Define corner in terms of last point
+        # Note: Could we do something more clever?
+        corner = interior_lat_lon[-1]
+        lon_corner, lat_corner = corner
+
+        def corner_filter_func(pos_lat_lon):
+            """
+            pos is (N, 2)
+            measure distance using haversine dist
+            """
+
+            lon_pos = pos_lat_lon[:, 0]
+            lat_pos = pos_lat_lon[:, 1]
+
+            lon_rad_corner, lat_rad_corner, lon_rad_pos, lat_rad_pos = map(
+                np.radians, [lon_corner, lat_corner, lon_pos, lat_pos]
+            )
+
+            dlon_rad = lon_rad_pos - lon_rad_corner
+            dlat_rad = lat_rad_pos - lat_rad_corner
+
+            hav_interm = (
+                np.sin(dlat_rad / 2.0) ** 2
+                + np.cos(lat_rad_corner)
+                * np.cos(lat_rad_pos)
+                * np.sin(dlon_rad / 2.0) ** 2
+            )
+            hav_rad = 2 * np.arcsin(np.sqrt(hav_interm))
+            hav_m = 6378137.0 * hav_rad
+
+            return hav_m <= args.corner_filter_radius
+
+    else:
+        corner_filter_func = None
+
     # Add plotting objects to this list
     data_objs = []
 
@@ -264,6 +328,7 @@ def main():
             color=args.grid_color,
             radius=GRID_RADIUS,
             size=args.grid_node_size,
+            pos_filter_func=corner_filter_func,
         )
     )
 
@@ -303,6 +368,7 @@ def main():
                     color=args.mesh_color,
                     radius=bot_radius,
                     size=args.mesh_node_size,
+                    pos_filter_func=corner_filter_func,
                 )
             )
             # Intra-level edges at bottom level
@@ -316,6 +382,7 @@ def main():
                     width=args.edge_width,
                     from_radius=bot_radius,
                     to_radius=bot_radius,
+                    pos_filter_func=corner_filter_func,
                 )
             )
 
@@ -337,6 +404,7 @@ def main():
                         width=args.edge_width,
                         from_radius=bot_radius,
                         to_radius=top_radius,
+                        pos_filter_func=corner_filter_func,
                     )
                 )
                 # Down edges
@@ -350,6 +418,7 @@ def main():
                         width=args.edge_width,
                         from_radius=top_radius,
                         to_radius=bot_radius,
+                        pos_filter_func=corner_filter_func,
                     )
                 )
 
@@ -371,6 +440,7 @@ def main():
                 radius=mesh_radius,
                 color=args.mesh_color,
                 size=args.mesh_node_size,
+                pos_filter_func=corner_filter_func,
             )
         )
         data_objs.append(
@@ -383,6 +453,7 @@ def main():
                 to_radius=mesh_radius,
                 color=args.mesh_color,
                 width=args.edge_width,
+                pos_filter_func=corner_filter_func,
             )
         )
 
@@ -399,6 +470,7 @@ def main():
             width=args.edge_width,
             from_radius=GRID_RADIUS,
             to_radius=mesh_radius,
+            pos_filter_func=corner_filter_func,
         )
     )
 
@@ -413,6 +485,7 @@ def main():
             width=args.edge_width,
             from_radius=mesh_radius,
             to_radius=GRID_RADIUS,
+            pos_filter_func=corner_filter_func,
         )
     )
 
