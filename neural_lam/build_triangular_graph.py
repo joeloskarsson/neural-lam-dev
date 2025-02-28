@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch_geometric as pyg
 from graphcast import graphcast as gc_gc
 from spherical_geometry.polygon import SphericalPolygon
 
@@ -99,7 +100,7 @@ def main():
         # Construct mask to decode only to interior
         decode_mask = utils.get_interior_mask(datastore, datastore_boundary)
         interior_lat_lon = grid_lat_lon[decode_mask]
-        boundary_lat_lon = grid_lat_lon[decode_mask]  # TODO use somehow?
+        boundary_lat_lon = grid_lat_lon[~decode_mask]
 
         # Only decode to interior
         grid_decode_lat_lon = interior_lat_lon
@@ -141,6 +142,7 @@ def main():
         grid_xyz = gutils.node_lat_lon_to_cart(grid_lat_lon)
         print("Cropping for LAM model. Computing convex hull...")
         grid_chull = SphericalPolygon.convex_hull(grid_xyz)
+        print("Subsetting mesh graph...")
 
         m2m_graphs = [
             gutils.subset_mesh_to_chull(grid_chull, mesh) for mesh in m2m_graphs
@@ -181,6 +183,7 @@ def main():
     # Grid2Mesh: Radius-based
     grid_con_mesh = m2m_graphs[-1]  # Mesh that should be connected to grid
     grid_con_lat_lon = mesh_graph_features[-1][-1]
+    num_mesh_nodes = grid_con_lat_lon.shape[0]
 
     # Compute maximum edge distance in finest mesh
     # pylint: disable-next=protected-access
@@ -188,11 +191,40 @@ def main():
         f"Edge length at bottom mesh level: {max_mesh_edge_len} "
         f"(~{max_mesh_edge_len*6378} km)"
     )
-    g2m_connect_radius = 0.6 * max_mesh_edge_len
 
-    g2m_edge_index = gcreate.connect_to_mesh_radius(
-        grid_lat_lon, grid_con_mesh, g2m_connect_radius
-    )
+    if boundary_region:
+        # Different radius for g2m connections for interior and boundary
+        interior_connect_radius = 0.6 * max_mesh_edge_len
+        boundary_connect_radius = 1.0 * max_mesh_edge_len  # Should include all
+
+        # Compute g2m from both
+        interior_g2m_edge_index = gcreate.connect_to_mesh_radius(
+            interior_lat_lon, grid_con_mesh, interior_connect_radius
+        )  # (2, num_edges_interior)
+        boundary_g2m_edge_index = gcreate.connect_to_mesh_radius(
+            boundary_lat_lon, grid_con_mesh, boundary_connect_radius
+        )  # (2, num_edges_boundary)
+        # Note: grid node indices direct to boundary positions
+
+        # Combine, offsetting boundary node indices
+        boundary_g2m_edge_index_offset = torch.stack(
+            (
+                # Boundary nodes always after interior nodes
+                datastore.num_grid_points + boundary_g2m_edge_index[0],
+                boundary_g2m_edge_index[1],
+            ),
+            dim=0,
+        )
+        g2m_edge_index = torch.cat(
+            (interior_g2m_edge_index, boundary_g2m_edge_index_offset), dim=1
+        )
+
+    else:
+        # Directly connect all grid nodes to mesh
+        g2m_connect_radius = 0.6 * max_mesh_edge_len
+        g2m_edge_index = gcreate.connect_to_mesh_radius(
+            grid_lat_lon, grid_con_mesh, g2m_connect_radius
+        )
 
     if args.plot:
         gvis.plot_graph(
@@ -202,6 +234,21 @@ def main():
             title="Grid2Mesh",
         )
         plt.show()
+
+    # Assert that all nodes are connected in g2m
+    g2m_degrees_grid = pyg.utils.degree(g2m_edge_index[0], num_grid_nodes)
+    g2m_degrees_mesh = pyg.utils.degree(g2m_edge_index[1], num_mesh_nodes)
+    num_disc_grid = 0
+    num_disc_mesh = 0
+    if g2m_degrees_grid.min() == 0:
+        num_disc_grid = torch.sum(g2m_degrees_grid == 0).item()
+    elif g2m_degrees_mesh.min() == 0:
+        num_disc_mesh = torch.sum(g2m_degrees_mesh == 0).item()
+    assert num_disc_grid == 0 and num_disc_mesh == 0, (
+        "Disconnected nodes in G2M: "
+        f"{num_disc_grid} disconnected grid nodes, "
+        f"{num_disc_mesh} disconnected mesh nodes"
+    )
 
     # Get edge features for g2m
     g2m_edge_features = gcreate.create_edge_features(
@@ -251,7 +298,6 @@ def main():
         os.path.join(save_dir_path, "m2g_features.pt"),
     )
 
-    num_mesh_nodes = grid_con_lat_lon.shape[0]
     print(
         f"Created graph with {num_grid_nodes} grid nodes "
         f"connected to {num_mesh_nodes} mesh nodes"

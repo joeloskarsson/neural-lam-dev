@@ -28,17 +28,26 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         # Keep only 1 direction of edge_index
         edge_index = edge_index[:, edge_index[0] < edge_index[1]]  # (2, M/2)
 
+    # Move tensors to cpu and make numpy
+    from_node_pos = from_node_pos.cpu().numpy()
+    to_node_pos = to_node_pos.cpu().numpy()
+
     # Compute (in)-degrees
-    degrees = (
+    from_degrees = (
+        pyg.utils.degree(edge_index[0], num_nodes=from_node_pos.shape[0])
+        .cpu()
+        .numpy()
+    )
+    to_degrees = (
         pyg.utils.degree(edge_index[1], num_nodes=to_node_pos.shape[0])
         .cpu()
         .numpy()
     )
+    min_degree = min(from_degrees.min(), to_degrees.min())
+    max_degree = max(from_degrees.max(), to_degrees.max())
 
-    # Move tensors to cpu and make numpy
+    # Move edge_index to cpu and make numpy
     edge_index = edge_index.cpu().numpy()
-    from_node_pos = from_node_pos.cpu().numpy()
-    to_node_pos = to_node_pos.cpu().numpy()
 
     # Plot edges
     from_pos = from_node_pos[edge_index[0]]  # (M/2, 2)
@@ -50,17 +59,34 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         )
     )
 
-    # Plot (receiver) nodes
+    # Plot (sender) nodes
     node_scatter = axis.scatter(
-        to_node_pos[:, 0],
-        to_node_pos[:, 1],
-        c=degrees,
+        from_node_pos[:, 0],
+        from_node_pos[:, 1],
+        c=from_degrees,
         s=3,
         marker="o",
         zorder=2,
         cmap="viridis",
         clim=None,
+        vmin=min_degree,
+        vmax=max_degree,
     )
+
+    # Plot (receiver) nodes
+    node_scatter = axis.scatter(
+        to_node_pos[:, 0],
+        to_node_pos[:, 1],
+        c=to_degrees,
+        s=3,
+        marker="o",
+        zorder=3,
+        cmap="viridis",
+        clim=None,
+        vmin=min_degree,
+        vmax=max_degree,
+    )
+
     axis.set_xlabel("Longitude")
     axis.set_ylabel("Latitude")
 
