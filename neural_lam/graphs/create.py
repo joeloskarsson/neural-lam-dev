@@ -23,7 +23,16 @@ GC_SPATIAL_FEATURES_KWARGS = {
 
 def inter_mesh_connection(from_mesh, to_mesh):
     """
-    Connect from_mesh to to_mesh
+    Connect finer from_mesh to coarser to_mesh.
+
+    from_mesh : trimesh.Trimesh
+        The mesh to connect from
+    to_mesh : trimesh.Trimesh
+        The mesh to connect to
+
+    Returns:
+        edge_index : np.array
+            Edge index describing connections, shaped (
     """
     kd_tree = scipy.spatial.cKDTree(to_mesh.vertices)
 
@@ -93,19 +102,40 @@ def create_multiscale_mesh(splits, levels):
     return merged_mesh, mesh_list
 
 
-def create_hierarchical_mesh(splits, levels):
+def create_hierarchical_mesh(splits, levels, crop_chull=None):
     """
     Create a hierarchical triangular mesh graph
 
     splits: int, number of times to split icosahedron
     levels: int, number of levels to keep (from finest resolution and up)
+    crop_chull: spherical_geometry.SphericalPolygon, a convex hull to crop
+        graphs to within. If None no cropping is done.
 
-    Returns: list of graphcast.icosahedral_mesh.TriangularMesh, the merged mesh
+    Return:
+        m2m_graphs: List[trimesh.Trimesh]
+            Levels in hierarchical graph
+        mesh_up_ei_list: List[torch.Tensor]
+            List of edge index for upwards inter-level edges,
+            each of shape (2, num_up_edges)
+        mesh_down_ei_list: List[torch.Tensor]
+            List of edge index for downwards inter-level edges,
+            each of shape (2, num_down_edges)
+        mesh_up_features_list: List[torch.Tensor]
+            List of edge features for up edges,
+            each of shape (num_up_edges, d_edge_features)
+        mesh_down_features_list,
+            List of edge features for down edges,
+            each of shape (num_down_edges, d_edge_features)
     """
     mesh_list = _create_mesh_levels(splits, levels)
 
-    mesh_list_rev = list(reversed(mesh_list))  # 0 is finest graph now
-    m2m_graphs = mesh_list_rev  # list of num_splitgraphs
+    m2m_graphs = list(reversed(mesh_list))  # 0 is finest graph now
+
+    if crop_chull is not None:
+        # Crop m2m graphs here, and used cropped versions below
+        m2m_graphs = [
+            gutils.subset_mesh_to_chull(crop_chull, mesh) for mesh in m2m_graphs
+        ]
 
     # Up and down edges for hierarchy
     # Reuse code for connecting grid to mesh?
@@ -113,45 +143,32 @@ def create_hierarchical_mesh(splits, levels):
     mesh_down_ei_list = []
     mesh_up_features_list = []
     mesh_down_features_list = []
-    for from_mesh, to_mesh in zip(mesh_list_rev[:-1], mesh_list_rev[1:]):
+    for from_mesh, to_mesh in zip(m2m_graphs[:-1], m2m_graphs[1:]):
+        # Compute up and down inter-mesh edges
         mesh_up_ei = inter_mesh_connection(from_mesh, to_mesh)
-        # Down is opposite direction of up
+        # Down edges have opposite direction of up
         mesh_down_ei = np.stack((mesh_up_ei[1, :], mesh_up_ei[0, :]), axis=0)
+
         mesh_up_ei_list.append(torch.tensor(mesh_up_ei, dtype=torch.long))
         mesh_down_ei_list.append(torch.tensor(mesh_down_ei, dtype=torch.long))
 
-        from_mesh_lat_lon = gutils.node_cart_to_lat_lon(
-            from_mesh.vertices
-        )  # (N, 2)
-        to_mesh_lat_lon = gutils.node_cart_to_lat_lon(
-            to_mesh.vertices
-        )  # (N, 2)
+        # Compute features for inter-mesh edges
+        mesh_up_features = create_edge_features(
+            mesh_up_ei, sender_mesh=from_mesh, receiver_mesh=to_mesh
+        )
+        mesh_down_features = create_edge_features(
+            mesh_down_ei, sender_mesh=to_mesh, receiver_mesh=from_mesh
+        )
+        mesh_up_features_list.append(mesh_up_features)
+        mesh_down_features_list.append(mesh_down_features)
 
-        # create features for hierarchical edges
-        _, _, mesh_up_features = gc_mu.get_bipartite_graph_spatial_features(
-            senders_node_lat=from_mesh_lat_lon[:, 1],
-            senders_node_lon=from_mesh_lat_lon[:, 0],
-            senders=mesh_up_ei[0, :],
-            receivers_node_lat=to_mesh_lat_lon[:, 1],
-            receivers_node_lon=to_mesh_lat_lon[:, 0],
-            receivers=mesh_up_ei[1, :],
-            **GC_SPATIAL_FEATURES_KWARGS,
-        )
-        _, _, mesh_down_features = gc_mu.get_bipartite_graph_spatial_features(
-            senders_node_lat=to_mesh_lat_lon[:, 1],
-            senders_node_lon=to_mesh_lat_lon[:, 0],
-            senders=mesh_down_ei[0, :],
-            receivers_node_lat=from_mesh_lat_lon[:, 1],
-            receivers_node_lon=from_mesh_lat_lon[:, 0],
-            receivers=mesh_down_ei[1, :],
-            **GC_SPATIAL_FEATURES_KWARGS,
-        )
-        mesh_up_features_list.append(
-            torch.tensor(mesh_up_features, dtype=torch.float32)
-        )
-        mesh_down_features_list.append(
-            torch.tensor(mesh_down_features, dtype=torch.float32)
-        )
+    return (
+        m2m_graphs,
+        mesh_up_ei_list,
+        mesh_down_ei_list,
+        mesh_up_features_list,
+        mesh_down_features_list,
+    )
 
 
 def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):

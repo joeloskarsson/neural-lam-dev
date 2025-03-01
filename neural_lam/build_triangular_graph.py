@@ -107,46 +107,65 @@ def main():
     else:
         grid_decode_lat_lon = grid_lat_lon
 
-    # === Create mesh graph ===
-    if args.hierarchical:
-        # Save up+down edge index + features to disk
-        #  torch.save(
-        #  mesh_up_ei_list,
-        #  os.path.join(save_dir_path, "mesh_up_edge_index.pt"),
-        #  )
-        #  torch.save(
-        #  mesh_down_ei_list,
-        #  os.path.join(save_dir_path, "mesh_down_edge_index.pt"),
-        #  )
-        #  torch.save(
-        #  mesh_up_features_list,
-        #  os.path.join(save_dir_path, "mesh_up_features.pt"),
-        #  )
-        #  torch.save(
-        #  mesh_down_features_list,
-        #  os.path.join(save_dir_path, "mesh_down_features.pt"),
-        #  )
-        # max_mesh_edge_len = ?
-        pass
-        # TODO Hierarchical graph
-    else:
-        merged_mesh, mesh_list = gcreate.create_multiscale_mesh(
-            args.splits, args.levels
-        )
-        max_mesh_edge_len = gc_gc._get_max_edge_distance(mesh_list[-1])
-        m2m_graphs = [merged_mesh]
-
+    if global_graph:
+        # No cropping to chull
+        grid_chull = None
     if not global_graph:
         # Crop mesh graph to convex hull of grid points
         # Compute convex hull
         grid_xyz = gutils.node_lat_lon_to_cart(grid_lat_lon)
         print("Cropping for LAM model. Computing convex hull...")
         grid_chull = SphericalPolygon.convex_hull(grid_xyz)
-        print("Subsetting mesh graph...")
 
-        m2m_graphs = [
-            gutils.subset_mesh_to_chull(grid_chull, mesh) for mesh in m2m_graphs
-        ]
+    # === Create mesh graph ===
+    if args.hierarchical:
+        # Build hierarchical graph
+        (
+            m2m_graphs,  # First index is maximum refinement
+            mesh_up_ei_list,
+            mesh_down_ei_list,
+            mesh_up_features_list,
+            mesh_down_features_list,
+        ) = gcreate.create_hierarchical_mesh(
+            args.splits, args.levels, grid_chull
+        )
+        print("Created hierarchical graph with levels:")
+        for level_i, mesh in enumerate(m2m_graphs):
+            print(f" {level_i} with {mesh.vertices.shape[0]} nodes")
+
+        # Save up+down edge index + features to disk
+        torch.save(
+            mesh_up_ei_list,
+            os.path.join(save_dir_path, "mesh_up_edge_index.pt"),
+        )
+        torch.save(
+            mesh_down_ei_list,
+            os.path.join(save_dir_path, "mesh_down_edge_index.pt"),
+        )
+        torch.save(
+            mesh_up_features_list,
+            os.path.join(save_dir_path, "mesh_up_features.pt"),
+        )
+        torch.save(
+            mesh_down_features_list,
+            os.path.join(save_dir_path, "mesh_down_features.pt"),
+        )
+        max_mesh_edge_len = gc_gc._get_max_edge_distance(m2m_graphs[0])
+    else:
+        merged_mesh, mesh_list = gcreate.create_multiscale_mesh(
+            args.splits, args.levels
+        )
+        max_mesh_edge_len = gc_gc._get_max_edge_distance(mesh_list[-1])
+
+        if not global_graph:
+            print("Subsetting mesh graph...")
+            merged_mesh = gutils.subset_mesh_to_chull(grid_chull, merged_mesh)
+
+        print(
+            "Created multiscale graph with "
+            f"{merged_mesh.vertices.shape[0]} nodes"
+        )
+        m2m_graphs = [merged_mesh]
 
     mesh_graph_features = [
         gcreate.create_mesh_graph_features(mesh_graph)
@@ -181,8 +200,8 @@ def main():
 
     # === Grid2Mesh ===
     # Grid2Mesh: Radius-based
-    grid_con_mesh = m2m_graphs[-1]  # Mesh that should be connected to grid
-    grid_con_lat_lon = mesh_graph_features[-1][-1]
+    grid_con_mesh = m2m_graphs[0]  # Mesh that should be connected to grid
+    grid_con_lat_lon = mesh_graph_features[0][-1]
     num_mesh_nodes = grid_con_lat_lon.shape[0]
 
     # Compute maximum edge distance in finest mesh
