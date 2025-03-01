@@ -1,4 +1,5 @@
 # Third-party
+import cartopy.crs as ccrs
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +19,10 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         # If to_node_pos is None it is same as from_node_pos
         to_node_pos = from_node_pos
 
-    fig, axis = plt.subplots()
+    plate_carree = ccrs.PlateCarree()
+    fig, axis = plt.subplots(subplot_kw={"projection": plate_carree})
+
+    axis.coastlines(resolution="110m", color="gray", alpha=0.5)
 
     # Fix for re-indexed edge indices only containing mesh nodes at
     # higher levels in hierarchy
@@ -49,13 +53,22 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
     # Move edge_index to cpu and make numpy
     edge_index = edge_index.cpu().numpy()
 
+    # Make all positions be in [-180, 180] for PC CRS
+    from_node_pos[:, 0] = ((from_node_pos[:, 0] + 180.0) % 360) - 180
+    to_node_pos[:, 0] = ((to_node_pos[:, 0] + 180.0) % 360) - 180
+
+    assert (from_node_pos[:, 0] <= 180).all()
+    assert (from_node_pos[:, 0] >= -180).all()
+    assert (to_node_pos[:, 0] <= 180).all()
+    assert (to_node_pos[:, 0] >= -180).all()
+
     # Plot edges
     from_pos = from_node_pos[edge_index[0]]  # (M/2, 2)
     to_pos = to_node_pos[edge_index[1]]  # (M/2, 2)
     edge_lines = np.stack((from_pos, to_pos), axis=1)
     axis.add_collection(
         matplotlib.collections.LineCollection(
-            edge_lines, lw=0.4, colors="black", zorder=1
+            edge_lines, lw=0.4, colors="black", zorder=1, transform=plate_carree
         )
     )
 
@@ -65,12 +78,13 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         from_node_pos[:, 1],
         c=from_degrees,
         s=3,
-        marker="o",
+        marker="X",
         zorder=2,
         cmap="viridis",
         clim=None,
         vmin=min_degree,
         vmax=max_degree,
+        transform=plate_carree,
     )
 
     # Plot (receiver) nodes
@@ -85,10 +99,13 @@ def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
         clim=None,
         vmin=min_degree,
         vmax=max_degree,
+        transform=plate_carree,
     )
 
     axis.set_xlabel("Longitude")
     axis.set_ylabel("Latitude")
+
+    axis.set_global()
 
     plt.colorbar(node_scatter, aspect=50)
 
