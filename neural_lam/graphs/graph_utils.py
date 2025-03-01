@@ -175,8 +175,38 @@ def subset_mesh_to_chull(spherical_chull, mesh_graph):
     def in_chull(point):
         return spherical_chull.contains_point(point)
 
+    # Subset points to not have to test if each is within chull.
+    # Subsetting based on a smaller sphere centered on the unit sphere surface,
+    # that encapsulates the whole chull. Only keep points within this sphere.
+    # Find a point, this should be somewhere in the chull
+    chull_points = np.concatenate(list(spherical_chull.points), axis=0)
+    comp_point = chull_points.mean(axis=0)
+    # Project to surface of sphere, as point might not be otherwise
+    comp_point = comp_point / np.linalg.norm(comp_point)
+    # Find out maximum (l2) distance from somehere in chull to point
+    # This assumes some limits on the size of the chull, longest line
+    # within chull can not be longer than half of sphere
+    chull_dist_to_point = np.linalg.norm(
+        chull_points - comp_point, axis=1
+    ).max()
+    vert_dist_to_point = np.linalg.norm(
+        mesh_graph.vertices - comp_point, axis=1
+    )
+    search_region_mask = vert_dist_to_point <= chull_dist_to_point
+    print(
+        "Cropping mesh to chull, search restricted to "
+        f"{np.sum(search_region_mask)}/{len(search_region_mask)} "
+        "mesh nodes"
+    )
+
     # Check which mesh nodes are within chull
-    node_mask = np.array([in_chull(point) for point in mesh_graph.vertices])
+    # "and" will not evaluate in_chull if not in lat-lon box
+    node_mask = np.array(
+        [
+            in_region and in_chull(point)
+            for point, in_region in zip(mesh_graph.vertices, search_region_mask)
+        ]
+    )
     new_nodes = mesh_graph.vertices[node_mask]
 
     # Keep only faces with all nodes within chull
