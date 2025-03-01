@@ -7,11 +7,17 @@ from graphcast import model_utils as gc_mu
 
 
 def node_cart_to_lat_lon(node_pos_cart):
-    """
-    Convert node positions to lat-lon
+    """Convert node positions to lat-lon.
 
-    node_pos_cart: (N_nodes, 3), cartesian coordinates
-    Returns: (N_nodes, 2), lat-lon coordinates
+    Parameters
+    ----------
+    node_pos_cart : np.ndarray
+        (N_nodes, 3) array, cartesian coordinates.
+
+    Returns
+    -------
+    np.ndarray
+        (N_nodes, 2) array, lat-lon coordinates.
     """
     phi, theta = gc_mu.cartesian_to_spherical(
         node_pos_cart[:, 0], node_pos_cart[:, 1], node_pos_cart[:, 2]
@@ -24,13 +30,17 @@ def node_cart_to_lat_lon(node_pos_cart):
 
 
 def node_lat_lon_to_cart(node_lat_lon):
-    """
-    Convert node positions from lat-lon to cartesian
+    """Convert node positions from lat-lon to cartesian.
 
-    NOTE: Based on graphcast.grid_mesh_connectivity._grid_lat_lon_to_coordinates
+    Parameters
+    ----------
+    node_pos_lat_lon : np.ndarray
+        (N_nodes, 2) array, lat-lon coordinates.
 
-    node_pos_lat_lon: (N_nodes, 2), lat-lon coordinates
-    Returns: (N_nodes, 3), cartesian coordinates
+    Returns
+    -------
+    np.ndarray
+        (N_nodes, 3) array, cartesian coordinates.
     """
     phi_grid = np.deg2rad(node_lat_lon[:, 0])
     theta_grid = np.deg2rad(90 - node_lat_lon[:, 1])
@@ -146,16 +156,20 @@ def in_mesh_triangle_indices_irregular(
 
 
 def subset_mesh_to_chull(spherical_chull, mesh_graph):
-    """
-    Subset the set of nodes and faces in a mesh graph to those fully within
+    """Subset the set of nodes and faces in a mesh graph to those fully within
     given spherical chull.
 
-    Args:
-        spherical_chull : spherical_geometry.SphericalPolygon
-        mesh_graph : trimesh.Trimesh
+    Parameters
+    ----------
+    spherical_chull : spherical_geometry.SphericalPolygon
+        The convex hull to subset to.
+    mesh_graph : trimesh.Trimesh
+        The mesh graph to subset.
 
     Returns
-        subsetted_graph : trimesh.Trimesh
+    -------
+    trimesh.Trimesh
+        Subsetted graph containing only nodes and faces within the convex hull.
     """
 
     def in_chull(point):

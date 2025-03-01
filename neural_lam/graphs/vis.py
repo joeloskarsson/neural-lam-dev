@@ -7,13 +7,24 @@ import torch_geometric as pyg
 
 
 def plot_graph(edge_index, from_node_pos, to_node_pos=None, title=None):
-    """
-    Plot flattened global graph
+    """Plot graph using Plate Carree projection.
 
-    edge_index: (2, N_edges) tensor
-    from_node_pos: (N_nodes, 2) tensor containing longitudes and latitudes
-    to_node_pos: (N_nodes, 2) tensor containing longitudes and latitudes,
-        or None (assumed same as from_node_pos)
+    Parameters
+    ----------
+    edge_index : tensor
+        (2, N_edges) tensor of node indices.
+    from_node_pos : tensor
+        (N_nodes, 2) tensor containing longitudes and latitudes.
+    to_node_pos : tensor, optional
+        (N_nodes, 2) tensor containing longitudes and latitudes,
+        or None (assumed same as from_node_pos).
+    title : str, optional
+        Title for the plot.
+
+    Returns
+    -------
+    tuple
+        (figure, axis) Matplotlib figure and axis objects.
     """
     if to_node_pos is None:
         # If to_node_pos is None it is same as from_node_pos

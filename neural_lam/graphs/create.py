@@ -22,17 +22,19 @@ GC_SPATIAL_FEATURES_KWARGS = {
 
 
 def inter_mesh_connection(from_mesh, to_mesh):
-    """
-    Connect finer from_mesh to coarser to_mesh.
+    """Connect finer from_mesh to coarser to_mesh.
 
+    Parameters
+    ----------
     from_mesh : trimesh.Trimesh
-        The mesh to connect from
+        The mesh to connect from.
     to_mesh : trimesh.Trimesh
-        The mesh to connect to
+        The mesh to connect to.
 
-    Returns:
-        edge_index : np.array
-            Edge index describing connections, shaped (
+    Returns
+    -------
+    np.array
+        Edge index describing connections, shaped (2, num_edges).
     """
     kd_tree = scipy.spatial.cKDTree(to_mesh.vertices)
 
@@ -57,12 +59,20 @@ def inter_mesh_connection(from_mesh, to_mesh):
 
 
 def _create_mesh_levels(splits, levels=None):
-    """
-    Create a sequence of mesh graph levels by splitting a global icosahedron
+    """Create a sequence of mesh graph levels by splitting a global icosahedron.
 
-    splits: int, number of times to split icosahedron
-    levels: int, number of levels to keep (from finest resolution and up)
-        if None, keep all levels
+    Parameters
+    ----------
+    splits : int
+        Number of times to split icosahedron.
+    levels : int, optional
+        Number of levels to keep (from finest resolution and up).
+        If None, keep all levels.
+
+    Returns
+    -------
+    list : List[trimesh.Trimesh]
+        List of mesh levels.
     """
     # Mesh, index 0 is initial graph, with longest edges
     mesh_list = gc_im.get_hierarchy_of_triangular_meshes_for_sphere(splits)
@@ -76,13 +86,21 @@ def _create_mesh_levels(splits, levels=None):
 
 
 def create_multiscale_mesh(splits, levels):
-    """
-    Create a multiscale triangular mesh graph
+    """Create a multiscale triangular mesh graph.
 
-    splits: int, number of times to split icosahedron
-    levels: int, number of levels to keep (from finest resolution and up)
+    Parameters
+    ----------
+    splits : int
+        Number of times to split icosahedron.
+    levels : int
+        Number of levels to keep (from finest resolution and up).
 
-    Returns: graphcast.icosahedral_mesh.TriangularMesh, the merged mesh
+    Returns
+    -------
+    graphcast.icosahedral_mesh.TriangularMesh
+        The merged mesh.
+    list : List[trimesh.Trimesh]
+        List of individual mesh levels.
     """
     mesh_list = _create_mesh_levels(splits, levels)
 
@@ -103,29 +121,33 @@ def create_multiscale_mesh(splits, levels):
 
 
 def create_hierarchical_mesh(splits, levels, crop_chull=None):
-    """
-    Create a hierarchical triangular mesh graph
+    """Create a hierarchical triangular mesh graph.
 
-    splits: int, number of times to split icosahedron
-    levels: int, number of levels to keep (from finest resolution and up)
-    crop_chull: spherical_geometry.SphericalPolygon, a convex hull to crop
-        graphs to within. If None no cropping is done.
+    Parameters
+    ----------
+    splits : int
+        Number of times to split icosahedron.
+    levels : int
+        Number of levels to keep (from finest resolution and up).
+    crop_chull : spherical_geometry.SphericalPolygon, optional
+        A convex hull to crop graphs to within. If None no cropping is done.
 
-    Return:
-        m2m_graphs: List[trimesh.Trimesh]
-            Levels in hierarchical graph
-        mesh_up_ei_list: List[torch.Tensor]
-            List of edge index for upwards inter-level edges,
-            each of shape (2, num_up_edges)
-        mesh_down_ei_list: List[torch.Tensor]
-            List of edge index for downwards inter-level edges,
-            each of shape (2, num_down_edges)
-        mesh_up_features_list: List[torch.Tensor]
-            List of edge features for up edges,
-            each of shape (num_up_edges, d_edge_features)
-        mesh_down_features_list,
-            List of edge features for down edges,
-            each of shape (num_down_edges, d_edge_features)
+    Returns
+    -------
+    List[trimesh.Trimesh]
+        Levels in hierarchical graph.
+    List[torch.Tensor]
+        List of edge index for upwards inter-level edges,
+        each of shape (2, num_up_edges).
+    List[torch.Tensor]
+        List of edge index for downwards inter-level edges,
+        each of shape (2, num_down_edges).
+    List[torch.Tensor]
+        List of edge features for up edges,
+        each of shape (num_up_edges, d_edge_features).
+    List[torch.Tensor]
+        List of edge features for down edges,
+        each of shape (num_down_edges, d_edge_features).
     """
     mesh_list = _create_mesh_levels(splits, levels)
 
@@ -172,13 +194,22 @@ def create_hierarchical_mesh(splits, levels, crop_chull=None):
 
 
 def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
-    """
-    Create edge_index that connects given grid positions to mesh, if within
-    specific radius of mesh node.
+    """Create edge_index that connects given grid positions to mesh, if
+    within specific radius of mesh node.
 
-    grid_pos: (num_grid_nodes, 2) np.array containing lat-lons of grid nodes
-    mesh: TriangularMesh, the mesh to connect to
-    radius: float, the radius to connect within (in euclidean distance)
+    Parameters
+    ----------
+    grid_pos : np.array
+        (num_grid_nodes, 2) array containing lat-lons of grid nodes.
+    mesh : trimesh.Trimesh
+        The mesh to connect to.
+    radius : float
+        The radius to connect within (in euclidean distance).
+
+    Returns
+    -------
+    torch.Tensor
+        Edge index tensor connecting grid to mesh nodes.
     """
     grid_mesh_indices = gutils.radius_query_indices_irregular(
         grid_lat_lon=grid_pos,
@@ -194,14 +225,21 @@ def connect_to_mesh_radius(grid_pos, mesh: gc_im.TriangularMesh, radius: float):
 
 
 def connect_to_grid_containing_tri(grid_pos, mesh: gc_im.TriangularMesh):
-    """
-    Create edge_index by for each grid node finding the containing triangle
+    """Create edge_index by for each grid node finding the containing triangle
     in the mesh and creating edges from the corner nodes to the grid node.
 
-    grid_pos: (num_grid_nodes, 2) np.array containing lat-lons of grid nodes
-    mesh: TriangularMesh, the mesh to connect from
-    """
+    Parameters
+    ----------
+    grid_pos : np.array
+        (num_grid_nodes, 2) array containing lat-lons of grid nodes.
+    mesh : trimesh.Trimesh
+        The mesh to connect from.
 
+    Returns
+    -------
+    torch.Tensor
+        Edge index tensor connecting mesh to grid nodes.
+    """
     grid_mesh_indices = gutils.in_mesh_triangle_indices_irregular(
         grid_lat_lon=grid_pos,
         mesh=mesh,
@@ -216,8 +254,24 @@ def connect_to_grid_containing_tri(grid_pos, mesh: gc_im.TriangularMesh):
 
 
 def create_mesh_graph_features(mesh_graph: gc_im.TriangularMesh):
-    """
-    Create torch tensors for edge_index and features from single TriangularMesh
+    """Create torch tensors for edge_index and features
+    from single TriangularMesh.
+
+    Parameters
+    ----------
+    mesh_graph : trimesh.Trimesh
+        The triangular mesh graph to extract features from.
+
+    Returns
+    -------
+    torch.Tensor
+        Edge index tensor of shape (2, num_edges).
+    torch.Tensor
+        Node features tensor of shape (num_nodes, d_node_features).
+    torch.Tensor
+        Edge features tensor of shape (num_edges, d_edge_features).
+    torch.Tensor
+        Node positions in lat-lon, shape (num_nodes, 2).
     """
     mesh_edge_index = np.stack(gc_im.faces_to_edges(mesh_graph.faces), axis=0)
 
@@ -246,8 +300,26 @@ def create_edge_features(
     sender_mesh=None,
     receiver_mesh=None,
 ):
-    """
-    Create torch tensors with edge features for given edge_index
+    """Create torch tensors with edge features for given edge_index.
+    For sender and receiver, either coords or a mesh has to be given.
+
+    Parameters
+    ----------
+    edge_index : np.array
+        Edge index array of shape (2, num_edges).
+    sender_coords : np.array, optional
+        Coordinates of sender nodes, shape (num_sender_nodes, 2).
+    receiver_coords : np.array, optional
+        Coordinates of receiver nodes, shape (num_receiver_nodes, 2).
+    sender_mesh : trimesh.Trimesh, optional
+        Mesh containing sender nodes.
+    receiver_mesh : trimesh.Trimesh, optional
+        Mesh containing receiver nodes.
+
+    Returns
+    -------
+    torch.Tensor
+        Edge features tensor of shape (num_edges, d_edge_features).
     """
     if sender_mesh is not None:
         assert (
@@ -286,11 +358,3 @@ def create_edge_features(
         **GC_SPATIAL_FEATURES_KWARGS,
     )
     return torch.tensor(edge_features, dtype=torch.float32)
-
-    # TODO Move below to a test?
-    # Check that indexing is correct
-    #  _, mesh_theta = gc_mu.lat_lon_deg_to_spherical(
-    #  mesh_lat_lon[:, 0],
-    #  mesh_lat_lon[:, 1],
-    #  )
-    #  assert np.sum(np.abs(mesh_features[:, 0] - np.cos(mesh_theta))) <= 1e-1
