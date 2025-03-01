@@ -181,10 +181,15 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     g2m_features = loads_file("g2m_features.pt")  # (M_g2m, d_edge_f)
     m2g_features = loads_file("m2g_features.pt")  # (M_m2g, d_edge_f)
 
-    # Normalize by dividing with longest edge (found in m2m)
-    longest_edge = max(
-        torch.max(level_features[:, 0]) for level_features in m2m_features
-    )  # Col. 0 is length
+    if tri_graph:
+        # For trigraphs the edge features are already rescaled when created
+        # Set to 1. to not rescale here
+        longest_edge = 1.0
+    else:
+        # Normalize by dividing with longest edge (found in m2m)
+        longest_edge = max(
+            torch.max(level_features[:, 0]) for level_features in m2m_features
+        )  # Col. 0 is length
     m2m_features = BufferList(m2m_features, persistent=False)
     m2m_features /= longest_edge
     g2m_features = g2m_features / longest_edge
