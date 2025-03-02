@@ -13,6 +13,8 @@ from .config import load_config_and_datastores
 from .graphs import graph_utils as gutils
 
 GRID_RADIUS = 1
+# https://community.plotly.com/t/whats-the-efficient-way-to-create-3d-scatter-plot-for-millions-of-points/60965/4
+NODE_PLOT_LIMIT = 100000  # Limit on number of points to plot before subsampling
 
 
 def make_earth(radius, resolution_reduction=1.0):
@@ -143,13 +145,23 @@ def create_node_plot(
         # Filter nodes before plotting
         node_pos = node_pos[pos_filter_func(node_lat_lon)]
 
+    # Plotly 3d can not render large amounts of points in some browsers, so
+    # for very large node sets we need to somehow subsample it before plotting.
+    # This is a simple solution
+    num_nodes = node_pos.shape[0]
+    subsample = num_nodes > NODE_PLOT_LIMIT
+    if subsample:
+        # Figure out how much to subsample by
+        subsampling_factor = int(num_nodes / NODE_PLOT_LIMIT)
+        node_pos = node_pos[::subsampling_factor]  # Simple subsampling
+
     return go.Scatter3d(
         x=node_pos[:, 0],
         y=node_pos[:, 1],
         z=node_pos[:, 2],
         mode="markers",
         marker={"color": color, "size": size},
-        name=label,
+        name=f"{label} (subsampled)" if subsample else label,
     )
 
 
@@ -259,6 +271,7 @@ def main():
     _, datastore, datastore_boundary = load_config_and_datastores(
         config_path=args.config_path
     )
+    boundary_forced = datastore_boundary is not None
 
     # Load graph data
     graph_dir_path = os.path.join(
@@ -321,16 +334,40 @@ def main():
     data_objs = []
 
     # Plot grid nodes
-    data_objs.append(
-        create_node_plot(
-            grid_lat_lon,
-            "Grid Nodes",
-            color=args.grid_color,
-            radius=GRID_RADIUS,
-            size=args.grid_node_size,
-            pos_filter_func=corner_filter_func,
+    if boundary_forced:
+        # Create separate plot objects for interior and boundary
+        data_objs.append(
+            create_node_plot(
+                datastore.get_lat_lon(category="state"),
+                "Interior grid Nodes",
+                color=args.grid_color,
+                radius=GRID_RADIUS,
+                size=args.grid_node_size,
+                pos_filter_func=corner_filter_func,
+            )
         )
-    )
+        data_objs.append(
+            create_node_plot(
+                datastore_boundary.get_lat_lon(category="forced"),
+                "Boundary grid Nodes",
+                color=args.grid_color,
+                radius=GRID_RADIUS,
+                size=args.grid_node_size,
+                pos_filter_func=corner_filter_func,
+            )
+        )
+    else:
+        # All grid nodes together
+        data_objs.append(
+            create_node_plot(
+                grid_lat_lon,
+                "Grid Nodes",
+                color=args.grid_color,
+                radius=GRID_RADIUS,
+                size=args.grid_node_size,
+                pos_filter_func=corner_filter_func,
+            )
+        )
 
     # Radius
     mesh_radius = GRID_RADIUS + args.mesh_height
