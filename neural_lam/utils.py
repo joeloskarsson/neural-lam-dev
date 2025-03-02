@@ -110,6 +110,15 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     # Tri-graph saves additional mesh lat_lon file
     tri_graph = os.path.isfile(os.path.join(graph_dir_path, "mesh_lat_lon.pt"))
 
+    if tri_graph:
+        # Trigraph edge index requires no reindexing
+        def reindex_func(edge_index):
+            return edge_index  # identity
+
+    else:
+        # Need to reindex some edge index to start from 0
+        reindex_func = zero_index_edge_index
+
     # Load static node features
     mesh_static_features = loads_file(
         "m2m_node_features.pt"
@@ -117,7 +126,7 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
 
     # Load edges (edge_index)
     m2m_edge_index = BufferList(
-        [zero_index_edge_index(ei) for ei in loads_file("m2m_edge_index.pt")],
+        [reindex_func(ei) for ei in loads_file("m2m_edge_index.pt")],
         persistent=False,
     )  # List of (2, M_m2m[l])
     g2m_edge_index = loads_file("g2m_edge_index.pt")  # (2, M_g2m)
@@ -223,17 +232,11 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     if hierarchical:
         # Load up and down edges and features
         mesh_up_edge_index = BufferList(
-            [
-                zero_index_edge_index(ei)
-                for ei in loads_file("mesh_up_edge_index.pt")
-            ],
+            [reindex_func(ei) for ei in loads_file("mesh_up_edge_index.pt")],
             persistent=False,
         )  # List of (2, M_up[l])
         mesh_down_edge_index = BufferList(
-            [
-                zero_index_edge_index(ei)
-                for ei in loads_file("mesh_down_edge_index.pt")
-            ],
+            [reindex_func(ei) for ei in loads_file("mesh_down_edge_index.pt")],
             persistent=False,
         )  # List of (2, M_down[l])
 
