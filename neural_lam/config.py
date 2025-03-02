@@ -1,7 +1,7 @@
 # Standard library
 import dataclasses
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 # Third-party
 import dataclass_wizard
@@ -41,6 +41,7 @@ class DatastoreSelection:
 
     kind: DatastoreKindStr
     config_path: str
+    overload_stats_path: Union[str, None] = None
 
 
 @dataclasses.dataclass
@@ -69,6 +70,23 @@ class UniformFeatureWeighting:
 
 
 @dataclasses.dataclass
+class OutputClamping:
+    """
+    Configuration for clamping the output of the model.
+
+    Attributes
+    ----------
+    lower : Dict[str, float]
+        The minimum value to clamp each output feature to.
+    upper : Dict[str, float]
+        The maximum value to clamp each output feature to.
+    """
+
+    lower: Dict[str, float] = dataclasses.field(default_factory=dict)
+    upper: Dict[str, float] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
 class TrainingConfig:
     """
     Configuration related to training neural-lam
@@ -85,6 +103,14 @@ class TrainingConfig:
     state_feature_weighting: Union[
         ManualStateFeatureWeighting, UniformFeatureWeighting
     ] = dataclasses.field(default_factory=UniformFeatureWeighting)
+
+    output_clamping: OutputClamping = dataclasses.field(
+        default_factory=OutputClamping
+    )
+    # List of pairs of timestamps as strings
+    excluded_intervals: List[List[str]] = dataclasses.field(
+        default_factory=list
+    )
 
 
 @dataclasses.dataclass
@@ -168,17 +194,35 @@ def load_config_and_datastores(
     datastore_config_path = (
         Path(config_path).parent / config.datastore.config_path
     )
+
+    if config.datastore.overload_stats_path is None:
+        overload_stats_path = None
+    else:
+        overload_stats_path = (
+            Path(config_path).parent / config.datastore.overload_stats_path
+        )
     datastore = init_datastore(
-        datastore_kind=config.datastore.kind, config_path=datastore_config_path
+        datastore_kind=config.datastore.kind,
+        config_path=datastore_config_path,
+        overload_stats_path=overload_stats_path,
     )
 
     if config.datastore_boundary is not None:
         datastore_boundary_config_path = (
             Path(config_path).parent / config.datastore_boundary.config_path
         )
+
+        if config.datastore_boundary.overload_stats_path is None:
+            boundary_overload_stats_path = None
+        else:
+            boundary_overload_stats_path = (
+                Path(config_path).parent
+                / config.datastore_boundary.overload_stats_path
+            )
         datastore_boundary = init_datastore(
             datastore_kind=config.datastore_boundary.kind,
             config_path=datastore_boundary_config_path,
+            overload_stats_path=boundary_overload_stats_path,
         )
     else:
         datastore_boundary = None

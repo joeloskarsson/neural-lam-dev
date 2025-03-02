@@ -50,6 +50,12 @@ def main(input_args=None):
         help="Number of workers in data loader (default: 4)",
     )
     parser.add_argument(
+        "--num_nodes",
+        type=int,
+        default=1,
+        help="Number of nodes to use in DDP (default: 1)",
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=200,
@@ -66,7 +72,7 @@ def main(input_args=None):
     parser.add_argument(
         "--restore_opt",
         action="store_true",
-        help="If optimizer state should be restored with model "
+        help="If full training state should be restored with model "
         "(default: false)",
     )
     parser.add_argument(
@@ -75,20 +81,35 @@ def main(input_args=None):
         default=32,
         help="Numerical precision to use for model (32/16/bf16) (default: 32)",
     )
+    parser.add_argument(
+        "--num_sanity_steps",
+        type=int,
+        default=2,
+        help="Number of sanity checking validation steps to run before starting"
+        " training (default: 2)",
+    )
 
     # Model architecture
     parser.add_argument(
         "--graph_name",
         type=str,
         default="multiscale",
-        help="Graph to load and use in graph-based model "
-        "(default: multiscale)",
+        help="Graph to load and use in graph-based model (default: multiscale)",
     )
     parser.add_argument(
         "--hidden_dim",
         type=int,
         default=64,
-        help="Dimensionality of all hidden representations (default: 64)",
+        help="Dimensionality of hidden representations (default: 64)",
+    )
+    parser.add_argument(
+        "--hidden_dim_grid",
+        type=int,
+        help=(
+            "Dimensionality of hidden representations related to grid nodes "
+            "(grid encodings and in grid-level MLPs)"
+            "(default: None, use same as hidden_dim)"
+        ),
     )
     parser.add_argument(
         "--hidden_layers",
@@ -130,6 +151,12 @@ def main(input_args=None):
         " forcing. If None, same as hidden_dim. If given, must be even "
         "(default: None)",
     )
+    parser.add_argument(
+        "--dynamic_time_deltas",
+        action="store_true",
+        help="If models should use dynamically computed time-deltas between"
+        "interior and boundary time steps (default: False (no))",
+    )
 
     # Training options
     parser.add_argument(
@@ -149,11 +176,23 @@ def main(input_args=None):
         "--lr", type=float, default=1e-3, help="learning rate (default: 0.001)"
     )
     parser.add_argument(
+        "--min_lr",
+        type=float,
+        default=1e-4,
+        help="Minimum learning rate for cosine annealing (default: 1e-4)",
+    )
+    parser.add_argument(
         "--val_interval",
         type=int,
         default=1,
         help="Number of epochs training between each validation run "
         "(default: 1)",
+    )
+    parser.add_argument(
+        "--grad_checkpointing",
+        action="store_true",
+        help="If gradient checkpointing should be used in-between each "
+        "unrolling step (default: false)",
     )
 
     # Evaluation options
@@ -176,6 +215,25 @@ def main(input_args=None):
         default=1,
         help="Number of example predictions to plot during evaluation "
         "(default: 1)",
+    )
+    parser.add_argument(
+        "--eval_init_times",
+        nargs="*",
+        default=[0, 12],
+        help="List of init times (UTC) where validation and evaluation "
+        "forecasts should be started from (default: 0, 12)",
+    )
+    parser.add_argument(
+        "--save_eval_to_zarr_path",
+        type=str,
+        help="Save evaluation results to zarr dataset at given path ",
+    )
+    parser.add_argument(
+        "--plot_vars",
+        nargs="+",
+        type=str,
+        default=["t2m"],
+        help="List of variables to plot during eval (default: t2m)",
     )
 
     # Logger Settings
@@ -209,25 +267,38 @@ def main(input_args=None):
         "--num_past_forcing_steps",
         type=int,
         default=1,
-        help="Number of past time steps to use as input for forcing data",
+        help="Number of past time steps to use as forcing input (default: 1)",
     )
     parser.add_argument(
         "--num_future_forcing_steps",
         type=int,
         default=1,
-        help="Number of future time steps to use as input for forcing data",
+        help="Number of future time steps to use as forcing input (default: 1)",
     )
     parser.add_argument(
         "--num_past_boundary_steps",
         type=int,
         default=1,
-        help="Number of past time steps to use as input for boundary data",
+        help="Number of past time steps to use as boundary input (default: 1)",
     )
     parser.add_argument(
         "--num_future_boundary_steps",
         type=int,
         default=1,
-        help="Number of future time steps to use as input for boundary data",
+        help="Number of future time steps to use as boundary input "
+        "(default: 1)",
+    )
+    parser.add_argument(
+        "--interior_subsample_step",
+        type=int,
+        default=1,
+        help="Subsample step for interior grid nodes",
+    )
+    parser.add_argument(
+        "--boundary_subsample_step",
+        type=int,
+        default=1,
+        help="Subsample step for boundary grid nodes",
     )
     args = parser.parse_args(input_args)
     args.var_leads_metrics_watch = {
@@ -244,6 +315,14 @@ def main(input_args=None):
         "val",
         "test",
     ), f"Unknown eval setting: {args.eval}"
+    for step in args.val_steps_to_log:
+        assert step <= args.ar_steps_eval, (
+            f"Can not log validation step {step} when validation is "
+            f"only unrolled {args.ar_steps_eval} steps."
+        )
+    assert (
+        args.load or not args.restore_opt
+    ), "Can not restore opt state when not loading a checkpoint"
 
     # Get an (actual) random run id as a unique identifier
     random_run_id = random.randint(0, 9999)
@@ -267,8 +346,15 @@ def main(input_args=None):
         num_future_forcing_steps=args.num_future_forcing_steps,
         num_past_boundary_steps=args.num_past_boundary_steps,
         num_future_boundary_steps=args.num_future_boundary_steps,
+        interior_subsample_step=args.interior_subsample_step,
+        boundary_subsample_step=args.boundary_subsample_step,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        # Make sure that dataset provided for eval contains correct split
+        eval_split=args.eval if args.eval is not None else "test",
+        eval_init_times=args.eval_init_times,
+        dynamic_time_deltas=args.dynamic_time_deltas,
+        excluded_intervals=config.training.excluded_intervals,
     )
 
     # Instantiate model + trainer
@@ -282,12 +368,22 @@ def main(input_args=None):
 
     # Load model parameters Use new args for model
     ModelClass = MODELS[args.model]
-    model = ModelClass(
-        args,
-        config=config,
-        datastore=datastore,
-        datastore_boundary=datastore_boundary,
-    )
+    if args.load and not args.restore_opt:
+        # Restore only model weights, not opt setup
+        model = ModelClass.load_from_checkpoint(
+            args.load,
+            args=args,
+            config=config,
+            datastore=datastore,
+            datastore_boundary=datastore_boundary,
+        )
+    else:
+        model = ModelClass(
+            args,
+            config=config,
+            datastore=datastore,
+            datastore_boundary=datastore_boundary,
+        )
 
     if args.eval:
         prefix = f"eval-{args.eval}-"
@@ -297,13 +393,37 @@ def main(input_args=None):
         f"{prefix}{args.model}-{args.processor_layers}x{args.hidden_dim}-"
         f"{time.strftime('%m_%d_%H')}-{random_run_id:04d}"
     )
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=f"saved_models/{run_name}",
-        filename="min_val_loss",
-        monitor="val_mean_loss",
-        mode="min",
-        save_last=True,
+    callbacks = []
+    # Checkpoint for minimum val_mean_loss + last
+    callbacks.append(
+        pl.callbacks.ModelCheckpoint(
+            dirpath=f"saved_models/{run_name}",
+            filename="min_val_mean_loss",
+            monitor="val_mean_loss",
+            mode="min",
+            save_last=True,
+        )
     )
+    # Checkpoint for min val loss at step ar_steps_train
+    possible_monitor_steps = [
+        step for step in args.val_steps_to_log if step <= args.ar_steps_train
+    ]
+    assert possible_monitor_steps, (
+        "Can not save checkpoints as no validation loss is logged for "
+        f"step {args.ar_steps_train} or earlier."
+    )
+    # Choose step closest to ar_steps_train
+    monitored_unroll_step = max(possible_monitor_steps)
+    callbacks.append(
+        pl.callbacks.ModelCheckpoint(
+            dirpath=f"saved_models/{run_name}",
+            filename=f"min_val_loss_unroll{monitored_unroll_step}",
+            monitor=f"val_loss_unroll{monitored_unroll_step}",
+            mode="min",
+            save_last=False,  # Only need one save_last=True
+        )
+    )
+
     logger = pl.loggers.WandbLogger(
         project=args.wandb_project,
         name=run_name,
@@ -314,11 +434,13 @@ def main(input_args=None):
         deterministic=True,
         strategy="ddp",
         accelerator=device_name,
+        num_nodes=args.num_nodes,
         logger=logger,
         log_every_n_steps=1,
-        callbacks=[checkpoint_callback],
+        callbacks=callbacks,
         check_val_every_n_epoch=args.val_interval,
         precision=args.precision,
+        num_sanity_val_steps=args.num_sanity_steps,
     )
 
     # Only init once, on rank 0 only
@@ -329,7 +451,9 @@ def main(input_args=None):
     if args.eval:
         trainer.test(model=model, datamodule=data_module, ckpt_path=args.load)
     else:
-        trainer.fit(model=model, datamodule=data_module, ckpt_path=args.load)
+        # Only feed fit method with checkpoint path if restore_opt
+        ckpt_for_fit = args.load if args.restore_opt else None
+        trainer.fit(model=model, datamodule=data_module, ckpt_path=ckpt_for_fit)
 
 
 if __name__ == "__main__":
