@@ -10,10 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.interpolate import RBFInterpolator
-from scipy.stats import wasserstein_distance
+from dask.diagnostics import ProgressBar
+from scipy.spatial import cKDTree
+from scipy.stats import kurtosis, skew, wasserstein_distance
+from scores.categorical import ThresholdEventOperator as TEO
 from scores.continuous import (
     mae,
+    mean_error,
     mse,
     rmse,
 )
@@ -64,17 +67,19 @@ VARIABLE_UNITS = {
 
 # elapsed forecast duration in steps for the forecast - [0] refers to the first forecast step at t+1
 # this should be a list of integers
-ELAPSED_FORECAST_DURATION = list(range(0, 120, 24))
+ELAPSED_FORECAST_DURATION = list(range(0, 120, 1))
 # Select specific start_times for the forecast. This is the start and end of
 # a slice in xarray. The start_time is included, the end_time is excluded.
 # This should be a list of two strings in the format "YYYY-MM-DDTHH:MM:SS"
 # Should be handy to evaluate certain dates, e.g. for a case study of a storm
-START_TIMES = ["2020-02-13T00:00:00", "2020-02-15T00:00:00"]
+START_TIMES = ["2019-10-31T00:00:00", "2020-10-23T13:00:00"]  # Full year
+# START_TIMES = ["2020-02-08T00:00:00", "2020-02-15T00:00:00"]  # Ciara/Sabine
+
 # Select specific plot times for the forecast (will be used to create maps for all variables)
 # This only affect chapter one with the plotting of the maps
 # Map creation takes a lot of time so this is limited to a single time step
 # Simply rerun these cells and chapter one for more time steps
-PLOT_TIME = "2020-02-13T00:00:00"
+PLOT_TIME = "2020-02-10T12:00:00"
 
 # Define Thresholds for the ETS metric (Equitable Threat Score)
 # These are calculated for wind and precipitation if available
@@ -83,6 +88,21 @@ PLOT_TIME = "2020-02-13T00:00:00"
 # The default thresholds are [0.1, 1, 5] for precipitation and [2.5, 5, 10] for wind
 THRESHOLDS_PRECIPITATION = [0.1, 1, 5]  # mm/h
 THRESHOLDS_WIND = [2.5, 5, 10]  # m/s
+
+# Define the metrics to compute for the verification
+# Some additional verifications will always be computed if the repsective vars
+# are available in the data
+METRICS = [
+    "MAE",
+    "RMSE",
+    "MSE",
+    "ME",
+    "STDEV_ERR",
+    "RelativeMAE",
+    "RelativeRMSE",
+    "PearsonR",
+    "Wasserstein",
+]
 
 # This setting is relevant for the mapplots in chapter 1
 # Higher levels of ZOOM will zoom in on the map, cropping the boundary
@@ -106,16 +126,17 @@ DPI = 100
 # This is used to create the histograms in chapter 2 (along space and time)
 # and in chapter 3 for the energy spectra (along time)
 # There is a trade-off between speed and accuracy, that each user has to find
-SUBSAMPLE_HISTOGRAM = 10
-
-# Subsample the data for FSS threshold calculation, 1e7 refers to the number of elements
-# This is not critical, as it is only used to calculate the 90% threshold
-# for the FSS based on the ground truth data
-SUBSAMPLE_FSS_THRESHOLD = 1e7
+SUBSAMPLE_HISTOGRAM = None
 
 # Takes a long time, but if you see NaN in your output, you can set this to True
 # This will check if there are any missing values in the data further below
-CHECK_MISSING = False
+CHECK_MISSING = True
+# In this script missing data is allowed as observations often have missing values
+# All time steps with missing values will be omitted from the verification
+# - Scores/Xarray masked arrays are created and false values are omitted by default
+# - For Scipy metrics, we need to convert to numpy arrays and change nan-policy to 'omit'.
+# - Fore the wasserstein metric and the wind vector without internal nan-handling policy,
+#  we need to remove the missing values for obs, ml, nwp before calculating the metric
 
 # Font sizes for consistent plotting (different fig-sizes wil require different font sizes)
 FONT_SIZES = {
@@ -193,7 +214,7 @@ def save_plot(fig, name, time=None, remove_title=True, dpi=300):
         if ax.get_title():
             ax.set_title("")
 
-    pdf_path = plot_dir / f"{safe_name}.pdf"
+    pdf_path = plot_dir / f"observations_{safe_name}.pdf"
     fig.savefig(pdf_path, bbox_inches="tight", dpi=dpi)
 
 
@@ -203,18 +224,16 @@ def export_table(df, name, caption=""):
     latex_str = df.to_latex(
         float_format="%.4f", caption=caption, label=f"tab:{name}"
     )
-    with open(f"tables/{name}.tex", "w") as f:
+    with open(f"tables/observations_{name}.tex", "w") as f:
         f.write(latex_str)
 
     # Export to CSV
-    df.to_csv(f"tables/{name}.csv")
+    df.to_csv(f"tables/observations_{name}.csv")
 
 
 # %%
 ds_nwp = xr.open_zarr(PATH_NWP)
 ds_nwp = ds_nwp.sel(time=slice(*START_TIMES))
-# The NWP data starts at elapsed forecast duration 0 = start_time
-ds_nwp = ds_nwp.drop_isel(lead_time=0).isel(lead_time=ELAPSED_FORECAST_DURATION)
 ds_nwp = ds_nwp[VARIABLES_NWP.keys()].rename(VARIABLES_NWP)
 ds_nwp = ds_nwp.rename_dims({
     "lead_time": "elapsed_forecast_duration",
@@ -236,19 +255,15 @@ ds_nwp = ds_nwp.assign_coords(
     )
 )
 
-# Get the first timestep of precipitation (already hourly)
-precip_first = ds_nwp.precipitation.isel(elapsed_forecast_duration=0)
-# Calculate hourly values by taking differences along elapsed_forecast_duration
-precip_hourly = ds_nwp.precipitation.diff(dim="elapsed_forecast_duration")
-
-# Combine first timestep with hourly differences
-precip_combined = xr.concat(
-    [precip_first.expand_dims("elapsed_forecast_duration"), precip_hourly],
-    dim="elapsed_forecast_duration",
+# # Calculate hourly values by taking differences along elapsed_forecast_duration
+ds_nwp["precipitation"] = ds_nwp.precipitation.diff(
+    dim="elapsed_forecast_duration"
 )
-# Replace the accumulated precipitation with hourly values
+# The NWP data starts at elapsed forecast duration 0 = start_time
+ds_nwp = ds_nwp.drop_isel(elapsed_forecast_duration=0).isel(
+    elapsed_forecast_duration=ELAPSED_FORECAST_DURATION
+)
 
-ds_nwp["precipitation"] = precip_combined
 ds_nwp = ds_nwp.transpose("start_time", "elapsed_forecast_duration", "x", "y")
 ds_nwp = ds_nwp[
     [
@@ -326,25 +341,64 @@ ds_obs["temperature_2m"] += 273.15  # Convert to Kelvin
 ds_obs["surface_pressure"] *= 100  # Convert to Pa
 ds_obs
 
+
 # %%
-# Check number of NaN values per variable
-total_elements = ds_obs.sizes["time"] * ds_obs.sizes["station"]
-nan_stats = {}
+def analyze_missing_data(ds_obs):
+    """
+    Create a 2D table of missing data percentages by variable and month.
 
-for var in ds_obs.data_vars:
-    n_nans = np.isnan(ds_obs[var]).sum().values
-    percent_nans = (n_nans / total_elements) * 100
-    nan_stats[var] = {
-        "total_nans": n_nans,
-        "percent_nans": f"{percent_nans:.2f}%",
-    }
+    Args:
+        ds_obs (xarray.Dataset): Observation dataset
+    """
+    # Convert time to pandas datetime for month extraction
+    times = pd.DatetimeIndex(ds_obs.time.values)
 
-# Create a formatted table
-df_nans = pd.DataFrame.from_dict(nan_stats, orient="index")
-print("\nNaN Statistics per Variable:")
-print("----------------------------")
-print(df_nans.to_string())
+    # Calculate total stations with missing data
+    stations_with_missing = len([
+        station
+        for station in ds_obs.station
+        if np.isnan(ds_obs.sel(station=station)).any()
+    ])
 
+    # Initialize results dictionary
+    missing_by_month = {}
+
+    # Calculate percentages for each variable and month
+    for var in ds_obs.data_vars:
+        missing_by_month[var] = {}
+        for month in range(1, 13):
+            month_mask = times.month == month
+            if not any(month_mask):
+                continue
+
+            total_elements = ds_obs.sizes["station"] * month_mask.sum()
+            n_missing = (
+                np.isnan(ds_obs[var].sel(time=ds_obs.time[month_mask]))
+                .sum()
+                .values
+            )
+            missing_by_month[var][month] = (n_missing / total_elements) * 100
+
+    # Create DataFrame
+    df = pd.DataFrame(missing_by_month)
+
+    # Format percentages to 2 decimal places
+    df = df.round(2)
+
+    # Print summary and table
+    print(
+        f"\nMissing Data Analysis: {stations_with_missing} out of {ds_obs.sizes['station']} stations affected"
+    )
+    print("Percentage of Missing Values by Variable and Month:")
+    print("=" * 50)
+    print(df)
+
+    return df
+
+
+# Call the function
+if CHECK_MISSING:
+    analyze_missing_data(ds_obs)
 
 # %%
 assert ds_obs.sizes["time"] == len(
@@ -471,7 +525,7 @@ def plot_comparison_maps(ds_obs, ds_nwp, ds_ml, plot_time=None, variables=None):
 
             # Plot observations
             obs_data = ds_obs.sel(time=forecast_time)[var]
-            im0 = axes[step_idx, 0].scatter(
+            axes[step_idx, 0].scatter(
                 ds_obs.longitude,
                 ds_obs.latitude,
                 c=obs_data,
@@ -485,7 +539,7 @@ def plot_comparison_maps(ds_obs, ds_nwp, ds_ml, plot_time=None, variables=None):
             nwp_data = ds_nwp.sel(
                 start_time=plot_time, elapsed_forecast_duration=step
             )[var]
-            im1 = axes[step_idx, 1].pcolormesh(
+            axes[step_idx, 1].pcolormesh(
                 ds_nwp.longitude,
                 ds_nwp.latitude,
                 nwp_data,
@@ -555,116 +609,264 @@ def plot_comparison_maps(ds_obs, ds_nwp, ds_ml, plot_time=None, variables=None):
 
 
 # Call the function
-plot_comparison_maps(ds_obs, ds_nwp, ds_ml, plot_time=plot_time)
+# plot_comparison_maps(ds_obs, ds_nwp, ds_ml, plot_time=plot_time)
 
 
 # %% [markdown]
 def interpolate_to_obs(
     ds_model_1, ds_model_2, ds_obs, vars_plot, neighbors=None
 ):
-    """Interpolate both model datasets to observation points."""
+    """Optimized function to interpolate model datasets to observation points using xarray/dask."""
+
+    print("Starting optimized interpolation...")
+
     # Extract observation coordinates
-    lats_obs = ds_obs.latitude.values
-    lons_obs = ds_obs.longitude.values
-    points_obs = np.column_stack((lats_obs, lons_obs))
+    points_obs = np.column_stack([
+        ds_obs.latitude.values,
+        ds_obs.longitude.values,
+    ])
 
-    # Extract model coordinates (assuming same grid for both models)
-    lats_model = ds_model_1.latitude.values
-    lons_model = ds_model_1.longitude.values
-    points_model = np.column_stack((lats_model.flatten(), lons_model.flatten()))
+    # Extract model coordinates from 2D lat/lon arrays
+    model_lats = ds_model_1.latitude
+    model_lons = ds_model_1.longitude
 
-    interpolated_data_1 = {}
-    interpolated_data_2 = {}
+    points_model = np.column_stack([
+        model_lats.values.ravel(),
+        model_lons.values.ravel(),
+    ])
 
+    # Build KDTree
+    print("Building KD-tree and finding neighbors...")
+    k = 4 if neighbors is None else neighbors
+    kdtree = cKDTree(points_model)
+    distances, flat_indices = kdtree.query(points_obs, k=k)
+
+    # Convert flat indices back to 2D indices
+    _, ny = ds_model_1.x.size, ds_model_1.y.size
+    x_indices = flat_indices // ny
+    y_indices = flat_indices % ny
+
+    # Precompute weights with proper dimensions
+    weights = xr.DataArray(
+        1.0 / (distances + 1e-10), dims=["station", "neighbor"]
+    )
+    weights = weights / weights.sum("neighbor")
+
+    def interpolate_variable(var):
+        print(f"Processing variable: {var}")
+
+        # Select nearest neighbors for both datasets
+        data_1 = ds_model_1[var].isel(
+            x=xr.DataArray(x_indices, dims=["station", "neighbor"]),
+            y=xr.DataArray(y_indices, dims=["station", "neighbor"]),
+        )
+        data_2 = ds_model_2[var].isel(
+            x=xr.DataArray(x_indices, dims=["station", "neighbor"]),
+            y=xr.DataArray(y_indices, dims=["station", "neighbor"]),
+        )
+
+        # Create interpolated datasets using weighted sum along neighbor dimension
+        result_1 = (data_1 * weights).sum(dim="neighbor")
+        result_2 = (data_2 * weights).sum(dim="neighbor")
+
+        return var, result_1, result_2
+
+    # Process all variables
+    results = {}
     for var in vars_plot:
-        data_1 = []
-        data_2 = []
+        var_name, data_1, data_2 = interpolate_variable(var)
+        results[var_name] = (data_1, data_2)
 
-        for t in ds_model_1.start_time:
-            for f in ds_model_1.elapsed_forecast_duration:
-                # Extract 2D fields for current time and forecast step
-                field_1 = (
-                    ds_model_1[var]
-                    .sel(start_time=t, elapsed_forecast_duration=f)
-                    .values
-                )
-                field_2 = (
-                    ds_model_2[var]
-                    .sel(start_time=t, elapsed_forecast_duration=f)
-                    .values
-                )
+    # Create output datasets
+    ds_interp_1 = xr.Dataset(
+        {var: results[var][0] for var in vars_plot},
+        coords={
+            "start_time": ds_model_1.start_time,
+            "elapsed_forecast_duration": ds_model_1.elapsed_forecast_duration,
+            "station": ds_obs.station,
+            "forecast_time": ds_model_1.forecast_time,
+            "latitude": ds_obs.latitude,
+            "longitude": ds_obs.longitude,
+        },
+    )
 
-                # Model 1 interpolation
-                data_slice_1 = field_1.flatten()
-                valid_mask_1 = ~np.isnan(data_slice_1)
-                if np.any(valid_mask_1):
-                    rbf_1 = RBFInterpolator(
-                        points_model[valid_mask_1],
-                        data_slice_1[valid_mask_1],
-                        neighbors=neighbors,
-                        kernel="linear",
-                    )
-                    stations_1 = rbf_1(points_obs)
-                else:
-                    stations_1 = np.full(len(points_obs), np.nan)
+    ds_interp_2 = xr.Dataset(
+        {var: results[var][1] for var in vars_plot},
+        coords={
+            "start_time": ds_model_2.start_time,
+            "elapsed_forecast_duration": ds_model_2.elapsed_forecast_duration,
+            "station": ds_obs.station,
+            "forecast_time": ds_model_2.forecast_time,
+            "latitude": ds_obs.latitude,
+            "longitude": ds_obs.longitude,
+        },
+    )
 
-                # Model 2 interpolation
-                data_slice_2 = field_2.flatten()
-                valid_mask_2 = ~np.isnan(data_slice_2)
-                if np.any(valid_mask_2):
-                    rbf_2 = RBFInterpolator(
-                        points_model[valid_mask_2],
-                        data_slice_2[valid_mask_2],
-                        neighbors=neighbors,
-                        kernel="linear",
-                    )
-                    stations_2 = rbf_2(points_obs)
-                else:
-                    stations_2 = np.full(len(points_obs), np.nan)
-
-                data_1.append(stations_1)
-                data_2.append(stations_2)
-
-        # Reshape data to (start_time, elapsed_forecast_duration, station)
-        data_1 = np.array(data_1).reshape(
-            len(ds_model_1.start_time),
-            len(ds_model_1.elapsed_forecast_duration),
-            len(ds_obs.station),
-        )
-        data_2 = np.array(data_2).reshape(
-            len(ds_model_2.start_time),
-            len(ds_model_2.elapsed_forecast_duration),
-            len(ds_obs.station),
-        )
-
-        # Create DataArrays with proper dimensions
-        interpolated_data_1[var] = xr.DataArray(
-            data_1,
-            dims=["start_time", "elapsed_forecast_duration", "station"],
-            coords={
-                "start_time": ds_model_1.start_time,
-                "elapsed_forecast_duration": ds_model_1.elapsed_forecast_duration,
-                "station": ds_obs.station,
-                "forecast_time": ds_model_1.forecast_time,
-            },
-        )
-        interpolated_data_2[var] = xr.DataArray(
-            data_2,
-            dims=["start_time", "elapsed_forecast_duration", "station"],
-            coords={
-                "start_time": ds_model_2.start_time,
-                "elapsed_forecast_duration": ds_model_2.elapsed_forecast_duration,
-                "station": ds_obs.station,
-                "forecast_time": ds_model_2.forecast_time,
-            },
-        )
-
-    return xr.Dataset(interpolated_data_1), xr.Dataset(interpolated_data_2)
+    return ds_interp_1, ds_interp_2
 
 
-# Use the function
 ds_nwp_interp, ds_ml_interp = interpolate_to_obs(
-    ds_nwp, ds_ml, ds_obs, VARIABLES_ML.values(), neighbors=10
+    ds_nwp,
+    ds_ml,
+    ds_obs,
+    VARIABLES_ML.values(),
+)
+
+with ProgressBar():
+    print("Computing interpolated datasets...")
+    ds_nwp_interp = ds_nwp_interp.compute()
+    print("NWP interpolation done.")
+    ds_ml_interp = ds_ml_interp.compute()
+    print("ML interpolation done.")
+
+
+# %%
+# %% [markdown]
+# ### Histograms of Interpolated Station Data
+
+
+def plot_interpolated_histograms(
+    ds_obs, ds_nwp_interp, ds_ml_interp, subsample=10
+):
+    """Plot histograms for interpolated station data comparing observations, NWP and ML predictions.
+
+    Args:
+        ds_obs: xarray Dataset containing observations
+        ds_nwp_interp: xarray Dataset containing interpolated NWP predictions
+        ds_ml_interp: xarray Dataset containing interpolated ML predictions
+        subsample: int, subsampling factor for faster plotting
+    """
+    # Sample data for faster plotting
+    ds_obs_sampled = ds_obs.isel(
+        time=slice(None, None, subsample), station=slice(None, None, subsample)
+    )
+    ds_nwp_sampled = ds_nwp_interp.isel(
+        start_time=slice(None, None, subsample),
+        station=slice(None, None, subsample),
+    )
+    ds_ml_sampled = ds_ml_interp.isel(
+        start_time=slice(None, None, subsample),
+        station=slice(None, None, subsample),
+    )
+
+    for variable_name in VARIABLES_ML.values():
+        if variable_name not in ds_obs:
+            continue
+
+        fig, ax = plt.subplots(figsize=(11, 7), dpi=DPI)
+
+        # Convert to numpy arrays
+        data_obs = ds_obs_sampled[variable_name].values.flatten()
+        data_ml = ds_ml_sampled[variable_name].values.flatten()
+        data_nwp = ds_nwp_sampled[variable_name].values.flatten()
+
+        # Create histograms for observations
+        ax.hist(
+            data_obs,
+            bins=300,
+            density=True,
+            color=COLORS["gt"],
+            label="Observations",
+            histtype="stepfilled",
+            linewidth=0,
+        )
+
+        # Plot NWP interpolated data
+        ax.hist(
+            data_nwp,
+            bins=300,
+            alpha=0.8,
+            density=True,
+            color=COLORS["nwp"],
+            label="NWP Interpolated",
+            histtype="stepfilled",
+            linewidth=0,
+        )
+
+        # Create histogram for ML interpolated data
+        ax.hist(
+            data_ml,
+            bins=300,
+            alpha=0.8,
+            density=True,
+            color=COLORS["ml"],
+            label="ML Interpolated",
+            histtype="stepfilled",
+            linewidth=0,
+        )
+
+        # Add labels and title
+        units = VARIABLE_UNITS[variable_name]
+        ax.set_title(
+            f"Distribution of {variable_name} at Station Locations", pad=20
+        )
+        ax.set_xlabel(f"{units}")
+
+        # Place legend in top left
+        ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98))
+
+        # Adjust axis limits
+        current_ylim = ax.get_ylim()
+        ax.set_ylim(0, current_ylim[1] * 1.3)
+
+        # Calculate statistics
+        stats_data = {
+            "Obs": [
+                f"{skew(data_obs, nan_policy='omit'):.2f}",
+                f"{kurtosis(data_obs, nan_policy='omit'):.2f}",
+            ],
+            "NWP": [
+                f"{skew(data_nwp, nan_policy='omit'):.2f}",
+                f"{kurtosis(data_nwp, nan_policy='omit'):.2f}",
+            ],
+            "ML": [
+                f"{skew(data_ml, nan_policy='omit'):.2f}",
+                f"{kurtosis(data_ml, nan_policy='omit'):.2f}",
+            ],
+        }
+
+        # Create and position table
+        col_labels = ["Skewness", "Kurtosis"]
+        row_labels = list(stats_data.keys())
+        cell_text = [
+            [stats_data[row][i] for i in range(2)] for row in row_labels
+        ]
+
+        table = ax.table(
+            cellText=cell_text,
+            rowLabels=row_labels,
+            colLabels=col_labels,
+            cellLoc="center",
+            loc="upper right",
+            bbox=[0.72, 0.78, 0.25, 0.18],
+        )
+
+        # Style table
+        table.auto_set_font_size(False)
+        table.set_fontsize(13)
+
+        for (row, col), cell in table._cells.items():
+            cell.set_text_props(wrap=True)
+            cell.set_facecolor("white")
+            cell.set_alpha(0.9)
+            cell.set_edgecolor("#D3D3D3")
+
+            if col == -1:
+                cell.set_width(0.15)
+                cell.set_text_props(horizontalalignment="right")
+            else:
+                cell.set_width(0.12)
+                cell.set_text_props(horizontalalignment="center")
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.show()
+        save_plot(fig, f"histogram_interpolated_{variable_name}")
+        plt.close()
+
+
+# Call the function after interpolation
+plot_interpolated_histograms(
+    ds_obs, ds_nwp_interp, ds_ml_interp, subsample=SUBSAMPLE_HISTOGRAM
 )
 
 
@@ -734,6 +936,7 @@ def plot_comparison_single_var_panel(
                     transform=ccrs.PlateCarree(),
                     vmin=vmin,
                     vmax=vmax,
+                    rasterized=True,
                 )
             else:
                 scatter = ax.scatter(
@@ -746,6 +949,7 @@ def plot_comparison_single_var_panel(
                     transform=ccrs.PlateCarree(),
                     vmin=vmin,
                     vmax=vmax,
+                    rasterized=True,
                 )
 
             ax.add_feature(cfeature.COASTLINE, edgecolor="grey")
@@ -792,22 +996,23 @@ def plot_comparison_single_var_panel(
 
 
 # Call the function for each variable
-for var in VARIABLES_ML.values():
-    fig = plot_comparison_single_var_panel(
-        ds_obs,
-        ds_nwp_interp,
-        ds_ml_interp,
-        var,
-        plot_time=plot_time,
-    )
-    plt.show()
-    save_plot(fig, f"interpolated_comparison_panel_{var}", time=plot_time)
-    plt.close()
+# for var in VARIABLES_ML.values():
+#     fig = plot_comparison_single_var_panel(
+#         ds_obs,
+#         ds_nwp_interp,
+#         ds_ml_interp,
+#         var,
+#         plot_time=plot_time,
+#     )
+#     plt.show()
+#     save_plot(fig, f"interpolated_comparison_panel_{var}", time=plot_time)
 
 
 # %% [markdown]
 # For the verification with scores the data must contain lat and lon as xarray dimensions.
 # Here we use masked arrays for this purpose. There might be a better way to do this.
+
+
 def calculate_metrics_by_efd(
     ds_obs,
     ds_nwp=None,
@@ -818,15 +1023,7 @@ def calculate_metrics_by_efd(
 ):
     """Calculate metrics for each Elapsed Forecast Duration for station data using xarray."""
     if metrics_to_compute is None:
-        metrics_to_compute = [
-            "MAE",
-            "RMSE",
-            "MSE",
-            "RelativeMAE",
-            "RelativeRMSE",
-            "PearsonR",
-            "Wasserstein",
-        ]
+        metrics_to_compute = METRICS
 
     variables = list(ds_obs.data_vars)
     elapsed_forecast_durations = ds_ml.elapsed_forecast_duration
@@ -880,83 +1077,92 @@ def calculate_metrics_by_efd(
             else:
                 valid_mask = mask_true & mask_ml
 
-            # Apply masks to data
             y_true = y_true.where(valid_mask)
             y_pred_ml = y_pred_ml.where(valid_mask)
             if ds_nwp is not None and var in ds_nwp:
                 y_pred_nwp = y_pred_nwp.where(valid_mask)
 
-            # Log the percentage of valid data points
-            total_points = valid_mask.size
-            valid_points = valid_mask.sum().values
-            print(
-                f"Valid data points: {valid_points}/{total_points} ({100 * valid_points / total_points:.2f}%)"
-            )
-
             metrics_dict[var] = {}
 
             # Calculate ML metrics using xarray
             if "MAE" in metrics_to_compute:
-                metrics_dict[var]["MAE ML"] = mae(y_true, y_pred_ml).values
+                metrics_dict[var]["MAE ML"] = mae(y_pred_ml, y_true).values
             if "RMSE" in metrics_to_compute:
-                metrics_dict[var]["RMSE ML"] = rmse(y_true, y_pred_ml).values
+                metrics_dict[var]["RMSE ML"] = rmse(y_pred_ml, y_true).values
             if "MSE" in metrics_to_compute:
-                metrics_dict[var]["MSE ML"] = mse(y_true, y_pred_ml).values
+                metrics_dict[var]["MSE ML"] = mse(y_pred_ml, y_true).values
+            if "ME" in metrics_to_compute:
+                metrics_dict[var]["ME ML"] = mean_error(
+                    y_pred_ml, y_true
+                ).values
+            if "STDEV_ERR" in metrics_to_compute:
+                metrics_dict[var]["STDEV_ERR ML"] = (
+                    (y_pred_ml - y_true).std().values
+                )
             if "RelativeMAE" in metrics_to_compute:
                 rel_mae = (
-                    abs(y_true - y_pred_ml) / (abs(y_true) + 1e-6)
+                    abs(y_pred_ml - y_true) / (abs(y_true) + 1e-6)
                 ).mean()
-                metrics_dict[var]["Relative MAE ML"] = rel_mae.values
+                metrics_dict[var]["RelativeMAE ML"] = rel_mae.values
             if "RelativeRMSE" in metrics_to_compute:
                 rel_rmse = np.sqrt(
-                    ((y_true - y_pred_ml) ** 2 / (y_true**2 + 1e-6)).mean()
+                    ((y_pred_ml - y_true) ** 2 / (y_true**2 + 1e-6)).mean()
                 )
-                metrics_dict[var]["Relative RMSE ML"] = rel_rmse.values
+                metrics_dict[var]["RelativeRMSE ML"] = rel_rmse.values
             if "PearsonR" in metrics_to_compute:
-                metrics_dict[var]["Pearson R ML"] = pearsonr(
-                    y_true, y_pred_ml
+                metrics_dict[var]["PearsonR ML"] = pearsonr(
+                    y_pred_ml, y_true
                 ).values
             if "Wasserstein" in metrics_to_compute:
-                # For Wasserstein, we need to convert to numpy arrays
-                true_vals = y_true.values[~np.isnan(y_true.values)]
-                pred_vals = y_pred_ml.values[~np.isnan(y_pred_ml.values)]
+                # Use the valid_mask directly instead of checking for NaN values again
+                pred_vals = y_pred_ml.values[valid_mask.values]
+                true_vals = y_true.values[valid_mask.values]
                 metrics_dict[var]["Wasserstein ML"] = wasserstein_distance(
-                    true_vals, pred_vals
+                    pred_vals, true_vals
                 )
 
             # Calculate NWP metrics if available
             if ds_nwp is not None and var in ds_nwp:
                 if "MAE" in metrics_to_compute:
                     metrics_dict[var]["MAE NWP"] = mae(
-                        y_true, y_pred_nwp
+                        y_pred_nwp, y_true
                     ).values
                 if "RMSE" in metrics_to_compute:
                     metrics_dict[var]["RMSE NWP"] = rmse(
-                        y_true, y_pred_nwp
+                        y_pred_nwp, y_true
                     ).values
                 if "MSE" in metrics_to_compute:
                     metrics_dict[var]["MSE NWP"] = mse(
-                        y_true, y_pred_nwp
+                        y_pred_nwp, y_true
                     ).values
+                if "ME" in metrics_to_compute:
+                    metrics_dict[var]["ME NWP"] = mean_error(
+                        y_pred_nwp, y_true
+                    ).values
+                if "STDEV_ERR" in metrics_to_compute:
+                    metrics_dict[var]["STDEV_ERR NWP"] = (
+                        (y_pred_nwp - y_true).std().values
+                    )
                 if "RelativeMAE" in metrics_to_compute:
                     rel_mae = (
-                        abs(y_true - y_pred_nwp) / (abs(y_true) + 1e-6)
+                        abs(y_pred_nwp - y_true) / (abs(y_true) + 1e-6)
                     ).mean()
-                    metrics_dict[var]["Relative MAE NWP"] = rel_mae.values
+                    metrics_dict[var]["RelativeMAE NWP"] = rel_mae.values
                 if "RelativeRMSE" in metrics_to_compute:
                     rel_rmse = np.sqrt(
-                        ((y_true - y_pred_nwp) ** 2 / (y_true**2 + 1e-6)).mean()
+                        ((y_pred_nwp - y_true) ** 2 / (y_true**2 + 1e-6)).mean()
                     )
-                    metrics_dict[var]["Relative RMSE NWP"] = rel_rmse.values
+                    metrics_dict[var]["RelativeRMSE NWP"] = rel_rmse.values
                 if "PearsonR" in metrics_to_compute:
-                    metrics_dict[var]["Pearson R NWP"] = pearsonr(
-                        y_true, y_pred_nwp
+                    metrics_dict[var]["PearsonR NWP"] = pearsonr(
+                        y_pred_nwp, y_true
                     ).values
                 if "Wasserstein" in metrics_to_compute:
                     # For Wasserstein, we need to convert to numpy arrays
-                    nwp_vals = y_pred_nwp.values[~np.isnan(y_pred_nwp.values)]
+                    pred_vals = y_pred_nwp.values[valid_mask.values]
+                    true_vals = y_true.values[valid_mask.values]
                     metrics_dict[var]["Wasserstein NWP"] = wasserstein_distance(
-                        true_vals, nwp_vals
+                        pred_vals, true_vals
                     )
 
             # Store combined metrics
@@ -979,29 +1185,590 @@ def calculate_metrics_by_efd(
     )
     combined_df.index.name = "Forecast Hours"
 
-    # Export tables
-    export_table(
-        combined_df,
-        f"observations_{prefix}_combined",
-        caption="Combined verification metrics for all forecast hours",
-    )
-
     return metrics_by_efd, combined_df
 
+
+# %%
 
 metrics_by_efd, combined_metrics = calculate_metrics_by_efd(
     ds_obs=ds_obs,
     ds_nwp=ds_nwp_interp,
     ds_ml=ds_ml_interp,
-    metrics_to_compute=[
-        "MAE",
-        "RMSE",
-        "MSE",
-        "RelativeMAE",
-        "RelativeRMSE",
-        "PearsonR",
-        "Wasserstein",
-    ],
+    metrics_to_compute=METRICS,
+)
+export_table(combined_metrics, "combined_metrics")
+
+
+# %%
+# Plot evolution of a specific metric over elapsed forecast duration
+elapsed_forecast_durations = list(metrics_by_efd.keys())
+metrics_to_compute = METRICS
+for variable in VARIABLES_ML.values():
+    for metric in metrics_to_compute:
+        try:
+            # Skip if any scores are missing
+            ml_scores = [
+                df.loc[variable, f"{metric} ML"]
+                for df in metrics_by_efd.values()
+            ]
+            nwp_scores = [
+                df.loc[variable, f"{metric} NWP"]
+                for df in metrics_by_efd.values()
+            ]
+
+            # Convert elapsed forecast durations from hours to timedelta
+            hours = [
+                x / np.timedelta64(1, "h")
+                for x in ds_ml.elapsed_forecast_duration.values
+            ]
+
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=DPI)
+
+            # Plot ML scores
+            ax.plot(
+                hours,
+                ml_scores,
+                label="ML",
+                color=COLORS["ml"],
+                linestyle=LINE_STYLES["ml"][0],
+                marker=LINE_STYLES["ml"][1],
+            )
+
+            # Plot NWP scores if they exist and are not all NaN
+            if not all(pd.isna(nwp_scores)):
+                ax.plot(
+                    hours,
+                    nwp_scores,
+                    label="NWP",
+                    color=COLORS["nwp"],
+                    linestyle=LINE_STYLES["nwp"][0],
+                    marker=LINE_STYLES["nwp"][1],
+                )
+
+            ax.set_xlabel("Elapsed Forecast Duration [h]")
+            ax.set_ylabel(f"{metric} [{VARIABLE_UNITS[variable]}]")
+            ax.set_title(f"{metric} Evolution for {variable}")
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+
+            plt.tight_layout()
+            plt.show()
+            save_plot(fig, f"{metric}_{variable}_evolution")
+            plt.close()
+
+        except (KeyError, ValueError) as e:
+            print(f"Skipping {metric} for {variable}: {str(e)}")
+            continue
+
+
+# %%
+def calculate_meteoswiss_metrics(
+    ds_obs, ds_ml_interp, ds_nwp_interp=None, subsample=None
+):
+    """Calculate MeteoSwiss verification metrics for station data.
+
+    Args:
+        ds_obs: xarray Dataset containing observations
+        ds_ml_interp: xarray Dataset containing interpolated ML predictions
+        ds_nwp_interp: xarray Dataset containing interpolated NWP predictions
+        subsample: int, subsampling factor for faster processing
+    """
+
+    # Sample data if requested
+    if subsample:
+        ds_obs_sample = ds_obs.isel(
+            time=slice(None, None, subsample),
+            station=slice(None, None, subsample),
+        )
+        ds_ml_sample = ds_ml_interp.isel(
+            start_time=slice(None, None, subsample),
+            station=slice(None, None, subsample),
+        )
+        if ds_nwp_interp is not None:
+            ds_nwp_sample = ds_nwp_interp.isel(
+                start_time=slice(None, None, subsample),
+                station=slice(None, None, subsample),
+            )
+    else:
+        ds_obs_sample = ds_obs
+        ds_ml_sample = ds_ml_interp
+        ds_nwp_sample = ds_nwp_interp if ds_nwp_interp is not None else None
+
+    # Initialize results dictionary
+    metrics = {}
+
+    # Get elapsed forecast durations
+    elapsed_forecast_durations = ds_ml_sample.elapsed_forecast_duration
+
+    for efd in elapsed_forecast_durations:
+        efd_key = float(efd / np.timedelta64(1, "h"))
+        metrics[efd_key] = {}
+
+        # Get ML data for this forecast lead time
+        ds_ml_lead = ds_ml_sample.sel(elapsed_forecast_duration=efd)
+        # Get data as xarray DataArrays
+
+        # Get NWP data if available
+        if ds_nwp_sample is not None:
+            ds_nwp_lead = ds_nwp_sample.sel(elapsed_forecast_duration=efd)
+
+        # Get observation times corresponding to these forecast times
+        forecast_times = ds_ml_lead.forecast_time.values
+        ds_obs_lead = ds_obs_sample.sel(time=forecast_times)
+
+        # Process each variable
+        for var in ds_obs_lead.data_vars:
+            # Skip if variable not in ML dataset
+            if var not in ds_ml_lead:
+                continue
+            metrics[efd_key][var] = {}
+
+            y_true = ds_obs_lead[var]
+            y_pred_ml = ds_ml_lead[var]
+
+            # Create masks for each dataset
+            mask_true = xr.where(~np.isnan(y_true), True, False)
+            mask_ml = xr.where(~np.isnan(y_pred_ml), True, False)
+
+            if ds_nwp is not None and var in ds_nwp:
+                y_pred_nwp = ds_nwp_lead[var]
+                mask_nwp = xr.where(~np.isnan(y_pred_nwp), True, False)
+                # Combine masks
+                valid_mask = mask_true & mask_ml & mask_nwp
+            else:
+                valid_mask = mask_true & mask_ml
+
+            y_true = y_true.where(valid_mask)
+            y_pred_ml = y_pred_ml.where(valid_mask)
+            if ds_nwp is not None and var in ds_nwp:
+                y_pred_nwp = y_pred_nwp.where(valid_mask)
+
+            if len(y_true) == 0:
+                print(f"No valid data for {var} at forecast hour {efd_key}")
+                continue
+
+            # Calculate threshold-based metrics for precipitation and wind
+            if var == "precipitation" and len(y_true) > 0:
+                for threshold in THRESHOLDS_PRECIPITATION:
+                    try:
+                        event_operator = TEO(default_event_threshold=threshold)
+                        ml_contingency = (
+                            event_operator.make_contingency_manager(
+                                y_pred_ml, y_true
+                            )
+                        )
+                        metrics[efd_key][var][f"FBI_{threshold}mm_ML"] = (
+                            ml_contingency.frequency_bias()
+                        )
+                        metrics[efd_key][var][f"ETS_{threshold}mm_ML"] = (
+                            ml_contingency.equitable_threat_score()
+                        )
+                        print(
+                            "DEBUG",
+                            metrics[efd_key][var][f"FBI_{threshold}mm_ML"],
+                        )
+                    except Exception as e:
+                        print(
+                            f"Error calculating threshold metrics for {var} at {threshold}mm: {e}"
+                        )
+
+                    if y_pred_nwp is not None:
+                        try:
+                            nwp_contingency = (
+                                event_operator.make_contingency_manager(
+                                    y_pred_nwp, y_true
+                                )
+                            )
+                            metrics[efd_key][var][f"FBI_{threshold}mm_NWP"] = (
+                                nwp_contingency.frequency_bias()
+                            )
+                            metrics[efd_key][var][f"ETS_{threshold}mm_NWP"] = (
+                                nwp_contingency.equitable_threat_score()
+                            )
+                        except Exception as e:
+                            print(
+                                f"Error calculating threshold metrics for NWP {var} at {threshold}mm: {e}"
+                            )
+
+            if var in ["wind_u_10m", "wind_v_10m"] and len(y_true) > 0:
+                for threshold in THRESHOLDS_WIND:
+                    try:
+                        event_operator = TEO(default_event_threshold=threshold)
+                        ml_contingency = (
+                            event_operator.make_contingency_manager(
+                                y_pred_ml, y_true
+                            )
+                        )
+                        metrics[efd_key][var][f"FBI_{threshold}ms_ML"] = (
+                            ml_contingency.frequency_bias().values
+                        )
+                        metrics[efd_key][var][f"ETS_{threshold}ms_ML"] = (
+                            ml_contingency.equitable_threat_score().values
+                        )
+                    except Exception as e:
+                        print(
+                            f"Error calculating threshold metrics for {var} at {threshold}m/s: {e}"
+                        )
+
+                    if y_pred_nwp is not None:
+                        try:
+                            nwp_contingency = (
+                                event_operator.make_contingency_manager(
+                                    y_pred_nwp, y_true
+                                )
+                            )
+                            metrics[efd_key][var][f"FBI_{threshold}ms_NWP"] = (
+                                nwp_contingency.frequency_bias().values
+                            )
+                            metrics[efd_key][var][f"ETS_{threshold}ms_NWP"] = (
+                                nwp_contingency.equitable_threat_score().values
+                            )
+                        except Exception as e:
+                            print(
+                                f"Error calculating threshold metrics for NWP {var} at {threshold}m/s: {e}"
+                            )
+
+    # Convert to DataFrame for easier handling
+    metrics_by_var = {}
+    for efd_key in metrics:
+        metrics_by_var[efd_key] = {}
+        for var in metrics[efd_key]:
+            metrics_by_var[efd_key][var] = pd.DataFrame(
+                metrics[efd_key][var], index=[0]
+            ).T
+
+    return metrics_by_var
+
+
+# %%
+def plot_meteoswiss_metrics_evolution(metrics_by_var, var_name, metric_prefix):
+    """Plot evolution of MeteoSwiss metrics over forecast time with three fixed viridis colors."""
+    forecast_hours = sorted(list(metrics_by_var.keys()))
+
+    # Get three fixed colors from viridis (start, middle, end)
+    colors = [plt.cm.viridis(x) for x in [0, 0.5, 0.99]]
+
+    # Find all metrics matching the prefix
+    all_metrics = []
+    for hour in forecast_hours:
+        if var_name in metrics_by_var[hour]:
+            for metric in metrics_by_var[hour][var_name].index:
+                if metric_prefix in metric:
+                    all_metrics.append(metric)
+
+    # Sort metrics by threshold value numerically
+    def get_threshold(metric):
+        return float(metric.split("_")[1].replace("mm", "").replace("ms", ""))
+
+    all_metrics = sorted(list(set(all_metrics)), key=get_threshold)
+
+    if not all_metrics:
+        print(
+            f"No metrics found with prefix {metric_prefix} for variable {var_name}"
+        )
+        return
+
+    # Group by model (ML/NWP)
+    ml_metrics = [m for m in all_metrics if m.endswith("ML")]
+    nwp_metrics = [m for m in all_metrics if m.endswith("NWP")]
+
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
+
+    # Plot ML metrics
+    for i, metric in enumerate(ml_metrics):
+        values = []
+        for hour in forecast_hours:
+            if (
+                var_name in metrics_by_var[hour]
+                and metric in metrics_by_var[hour][var_name].index
+            ):
+                values.append(metrics_by_var[hour][var_name].loc[metric, 0])
+            else:
+                values.append(np.nan)
+
+        threshold = metric.split("_")[1].replace("mm", "").replace("ms", "")
+        ax.plot(
+            forecast_hours,
+            values,
+            linestyle=LINE_STYLES["ml"][0],
+            marker=LINE_STYLES["ml"][1],
+            color=colors[i],
+            label=f"ML {threshold}{'mm' if var_name == 'precipitation' else 'm/s'}",
+        )
+
+    # Plot NWP metrics
+    for i, metric in enumerate(nwp_metrics):
+        values = []
+        for hour in forecast_hours:
+            if (
+                var_name in metrics_by_var[hour]
+                and metric in metrics_by_var[hour][var_name].index
+            ):
+                values.append(metrics_by_var[hour][var_name].loc[metric, 0])
+            else:
+                values.append(np.nan)
+
+        threshold = metric.split("_")[1].replace("mm", "").replace("ms", "")
+        ax.plot(
+            forecast_hours,
+            values,
+            linestyle=LINE_STYLES["nwp"][0],
+            marker=LINE_STYLES["nwp"][1],
+            color=colors[i],
+            label=f"NWP {threshold}{'mm' if var_name == 'precipitation' else 'm/s'}",
+        )
+
+    ax.set_xlabel("Forecast Lead Time (hours)")
+    ax.set_ylabel(f"{metric_prefix}")
+    ax.set_title(f"{metric_prefix} for {var_name}")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+    save_plot(fig, f"{metric_prefix.lower()}_{var_name}_evolution")
+
+
+# %%
+# Calculate MeteoSwiss metrics
+def reshape_meteoswiss_metrics(metrics_dict):
+    """Reshape MeteoSwiss metrics into a single DataFrame with proper column structure"""
+    # Create a list to store all data
+    data = []
+
+    # Iterate through each forecast hour
+    for hour in metrics_dict:
+        row_data = {"forecast_hour": hour}
+        # Iterate through each variable
+        for var in metrics_dict[hour]:
+            # Get metrics for this variable
+            var_metrics = metrics_dict[hour][var]
+            # Add each metric to the row data
+            for metric_name in var_metrics.index:
+                row_data[f"{var}_{metric_name}"] = var_metrics.loc[
+                    metric_name, 0
+                ]
+        data.append(row_data)
+
+    # Create DataFrame from collected data
+    df = pd.DataFrame(data)
+    df.set_index("forecast_hour", inplace=True)
+    return df
+
+
+# Use it after calculate_meteoswiss_metrics
+print("Calculating MeteoSwiss metrics...")
+meteoswiss_metrics = calculate_meteoswiss_metrics(
+    ds_obs, ds_ml_interp, ds_nwp_interp, subsample=SUBSAMPLE_HISTOGRAM
+)
+metrics_df = reshape_meteoswiss_metrics(meteoswiss_metrics)
+
+# Now export the reshaped DataFrame
+export_table(
+    metrics_df, "meteoswiss_metrics", caption="MeteoSwiss verification metrics"
 )
 
+# %%
+if "precipitation" in ds_obs:
+    plot_meteoswiss_metrics_evolution(
+        meteoswiss_metrics, "precipitation", "ETS"
+    )
+    plot_meteoswiss_metrics_evolution(
+        meteoswiss_metrics, "precipitation", "FBI"
+    )
+
+if "wind_u_10m" in ds_obs:
+    plot_meteoswiss_metrics_evolution(meteoswiss_metrics, "wind_u_10m", "ETS")
+    plot_meteoswiss_metrics_evolution(meteoswiss_metrics, "wind_u_10m", "FBI")
+
+if "wind_v_10m" in ds_obs:
+    plot_meteoswiss_metrics_evolution(meteoswiss_metrics, "wind_v_10m", "ETS")
+    plot_meteoswiss_metrics_evolution(meteoswiss_metrics, "wind_v_10m", "FBI")
+
+
+# %%
+def wind_vector_rmse(u_true, v_true, u_pred, v_pred):
+    """Calculate RMSE based on wind vector differences."""
+    u_diff = u_true - u_pred
+    v_diff = v_true - v_pred
+    vector_diff = np.sqrt(u_diff**2 + v_diff**2)
+    return float(np.sqrt(np.mean(vector_diff**2)))
+
+
+def calculate_wind_vector_metrics(
+    ds_obs, ds_ml_interp, ds_nwp_interp=None, subsample=None
+):
+    """Calculate wind vector metrics for station data.
+
+    Args:
+        ds_obs: xarray Dataset containing observations
+        ds_ml_interp: xarray Dataset containing interpolated ML predictions
+        ds_nwp_interp: xarray Dataset containing interpolated NWP predictions
+        subsample: int, subsampling factor for faster processing
+    """
+    # Sample data if requested
+    if subsample:
+        ds_obs_sample = ds_obs.isel(
+            time=slice(None, None, subsample),
+            station=slice(None, None, subsample),
+        )
+        ds_ml_sample = ds_ml_interp.isel(
+            start_time=slice(None, None, subsample),
+            station=slice(None, None, subsample),
+        )
+        if ds_nwp_interp is not None:
+            ds_nwp_sample = ds_nwp_interp.isel(
+                start_time=slice(None, None, subsample),
+                station=slice(None, None, subsample),
+            )
+    else:
+        ds_obs_sample = ds_obs
+        ds_ml_sample = ds_ml_interp
+        ds_nwp_sample = ds_nwp_interp if ds_nwp_interp is not None else None
+
+    # Check if wind components exist
+    if "wind_u_10m" not in ds_obs_sample or "wind_v_10m" not in ds_obs_sample:
+        print("Wind components not found in observation dataset")
+        return None
+
+    if "wind_u_10m" not in ds_ml_sample or "wind_v_10m" not in ds_ml_sample:
+        print("Wind components not found in ML dataset")
+        return None
+
+    # Get elapsed forecast durations
+    elapsed_forecast_durations = ds_ml_sample.elapsed_forecast_duration
+    forecast_hours = [
+        float(efd / np.timedelta64(1, "h"))
+        for efd in elapsed_forecast_durations
+    ]
+
+    # Initialize lists to store RMSE values over time
+    ml_rmse_over_time = []
+    nwp_rmse_over_time = []
+
+    for efd in elapsed_forecast_durations:
+        # Get ML data for this forecast lead time
+        ds_ml_lead = ds_ml_sample.sel(elapsed_forecast_duration=efd)
+
+        # Get observation times corresponding to these forecast times
+        forecast_times = ds_ml_lead.forecast_time.values
+        ds_obs_lead = ds_obs_sample.sel(time=forecast_times)
+
+        # Get wind components for observations and ML
+        u_true = ds_obs_lead["wind_u_10m"].values
+        v_true = ds_obs_lead["wind_v_10m"].values
+        u_ml = ds_ml_lead["wind_u_10m"].values
+        v_ml = ds_ml_lead["wind_v_10m"].values
+
+        # Create valid mask
+        valid_mask = (
+            ~np.isnan(u_true)
+            & ~np.isnan(v_true)
+            & ~np.isnan(u_ml)
+            & ~np.isnan(v_ml)
+        )
+
+        if np.any(valid_mask):
+            # Calculate ML wind vector RMSE
+            wind_rmse_ml = wind_vector_rmse(
+                u_true[valid_mask],
+                v_true[valid_mask],
+                u_ml[valid_mask],
+                v_ml[valid_mask],
+            )
+            ml_rmse_over_time.append(wind_rmse_ml)
+        else:
+            ml_rmse_over_time.append(np.nan)
+
+        # Calculate NWP RMSE if available
+        if (
+            ds_nwp_sample is not None
+            and "wind_u_10m" in ds_nwp_sample
+            and "wind_v_10m" in ds_nwp_sample
+        ):
+            ds_nwp_lead = ds_nwp_sample.sel(elapsed_forecast_duration=efd)
+            u_nwp = ds_nwp_lead["wind_u_10m"].values
+            v_nwp = ds_nwp_lead["wind_v_10m"].values
+
+            valid_mask_nwp = valid_mask & ~np.isnan(u_nwp) & ~np.isnan(v_nwp)
+
+            if np.any(valid_mask_nwp):
+                wind_rmse_nwp = wind_vector_rmse(
+                    u_true[valid_mask_nwp],
+                    v_true[valid_mask_nwp],
+                    u_nwp[valid_mask_nwp],
+                    v_nwp[valid_mask_nwp],
+                )
+                nwp_rmse_over_time.append(wind_rmse_nwp)
+            else:
+                nwp_rmse_over_time.append(np.nan)
+        else:
+            nwp_rmse_over_time.append(np.nan)
+
+    # Create result DataFrame
+    time_series_df = pd.DataFrame({
+        "Elapsed Forecast Duration": forecast_hours,
+        "ML Vector RMSE": ml_rmse_over_time,
+        "NWP Vector RMSE": nwp_rmse_over_time,
+    })
+
+    return time_series_df
+
+
+# %%
+def plot_wind_vector_rmse(time_series_df):
+    """Plot wind vector RMSE evolution over forecast time.
+
+    Args:
+        time_series_df: Time series DataFrame from calculate_wind_vector_metrics
+    """
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=DPI)
+
+    # Plot ML RMSE
+    ax.plot(
+        time_series_df["Elapsed Forecast Duration"],
+        time_series_df["ML Vector RMSE"],
+        color=COLORS["ml"],
+        linestyle=LINE_STYLES["ml"][0],
+        marker=LINE_STYLES["ml"][1],
+        label="ML",
+    )
+
+    # Plot NWP RMSE if available
+    if not all(np.isnan(time_series_df["NWP Vector RMSE"])):
+        ax.plot(
+            time_series_df["Elapsed Forecast Duration"],
+            time_series_df["NWP Vector RMSE"],
+            color=COLORS["nwp"],
+            linestyle=LINE_STYLES["nwp"][0],
+            marker=LINE_STYLES["nwp"][1],
+            label="NWP",
+        )
+
+    ax.set_xlabel("Forecast Lead Time (hours)")
+    ax.set_ylabel("Wind Vector RMSE (m/s)")
+    ax.set_title("Wind Vector RMSE Evolution")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+    save_plot(fig, "wind_vector_rmse_evolution")
+
+
+# %%
+# Calculate wind vector metrics
+if "wind_u_10m" in ds_obs and "wind_v_10m" in ds_obs:
+    print("Calculating wind vector metrics...")
+    wind_timeseries = calculate_wind_vector_metrics(
+        ds_obs, ds_ml_interp, ds_nwp_interp, subsample=SUBSAMPLE_HISTOGRAM
+    )
+    plot_wind_vector_rmse(wind_timeseries)
+    export_table(
+        wind_timeseries,
+        "wind_vector_metrics_timeseries",
+        caption="Wind vector RMSE over forecast lead time",
+    )
+else:
+    print("Wind components not found in the data")
 # %%
