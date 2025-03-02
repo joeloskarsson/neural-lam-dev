@@ -64,6 +64,20 @@ def main():
         action="store_true",
         help="If the graph should be global, not cropped based on grid nodes",
     )
+    parser.add_argument(
+        "--g2m_radius",
+        type=float,
+        help="Radius (relative to longest mesh edge) to connect grid and "
+        "mesh nodes in g2m.",
+        default=0.6,
+    )
+    parser.add_argument(
+        "--g2m_radius_boundary",
+        type=float,
+        help="Radius (relative to longest mesh edge) to connect boundary "
+        "grid nodes and mesh nodes in g2m, when config has boundary forcing.",
+        default=1.8,
+    )
     args = parser.parse_args()
 
     _, datastore, datastore_boundary = load_config_and_datastores(
@@ -213,8 +227,8 @@ def main():
 
     if boundary_region:
         # Different radius for g2m connections for interior and boundary
-        interior_connect_radius = 0.6 * max_mesh_edge_len
-        boundary_connect_radius = 1.0 * max_mesh_edge_len  # Should include all
+        interior_connect_radius = args.g2m_radius * max_mesh_edge_len
+        boundary_connect_radius = args.g2m_radius_boundary * max_mesh_edge_len
 
         # Compute g2m from both
         interior_g2m_edge_index = gcreate.connect_to_mesh_radius(
@@ -240,7 +254,7 @@ def main():
 
     else:
         # Directly connect all grid nodes to mesh
-        g2m_connect_radius = 0.6 * max_mesh_edge_len
+        g2m_connect_radius = args.g2m_radius * max_mesh_edge_len
         g2m_edge_index = gcreate.connect_to_mesh_radius(
             grid_lat_lon, grid_con_mesh, g2m_connect_radius
         )
