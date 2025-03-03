@@ -245,7 +245,13 @@ def main():
         "--grid_color",
         type=str,
         default="black",
-        help="Color of grid nodes",
+        help="Color of grid nodes (interior in case of LAM setup)",
+    )
+    parser.add_argument(
+        "--boundary_grid_color",
+        type=str,
+        default="black",
+        help="Color of boundary grid nodes in LAM setup",
     )
     parser.add_argument(
         "--mesh_color",
@@ -350,7 +356,7 @@ def main():
             create_node_plot(
                 datastore_boundary.get_lat_lon(category="forced"),
                 "Boundary grid Nodes",
-                color=args.grid_color,
+                color=args.boundary_grid_color,
                 radius=GRID_RADIUS,
                 size=args.grid_node_size,
                 pos_filter_func=corner_filter_func,
