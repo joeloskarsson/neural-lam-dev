@@ -137,12 +137,13 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     # might be indexed
     m2g_min_indices = m2g_edge_index.min(dim=1, keepdim=True)[0]
 
+    # Number of mesh nodes at level that connects to grid
+    num_mesh_nodes = mesh_static_features[0].shape[0]
+
     if not tri_graph:
         # Rect graph, need to zero-index g2m and m2g edge_index
         if m2g_min_indices[0] < m2g_min_indices[1]:
             # mesh has the first indices
-            # Number of mesh nodes at level that connects to grid
-            num_mesh_nodes = mesh_static_features[0].shape[0]
 
             m2g_edge_index = torch.stack(
                 (
@@ -180,6 +181,18 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
             )
     assert m2g_edge_index.min() >= 0, "Negative node index in m2g"
     assert g2m_edge_index.min() >= 0, "Negative node index in g2m"
+
+    # Check that g2m is connected to all grid and mesh nodes
+    assert g2m_edge_index[0].min() == 0
+    assert g2m_edge_index[1].min() == 0
+    assert g2m_edge_index[1].max() == num_mesh_nodes - 1
+    assert len(torch.unique(g2m_edge_index[1])) == num_mesh_nodes
+
+    assert m2g_edge_index[1].min() == 0
+
+    # Only interior
+    assert m2g_edge_index[1].max() == datastore.num_grid_points - 1
+    assert len(torch.unique(m2g_edge_index[1])) == datastore.num_grid_points
 
     n_levels = len(m2m_edge_index)
     hierarchical = n_levels > 1  # Nor just single level mesh graph

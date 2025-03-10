@@ -297,6 +297,9 @@ def main():
     grid_lat_lon = utils.get_stacked_lat_lons(datastore, datastore_boundary)
     # (num_nodes_full, 3)
 
+    assert g2m_edge_index[0].max() == grid_lat_lon.shape[0] - 1
+    assert len(np.unique(g2m_edge_index[0])) == grid_lat_lon.shape[0]
+
     # Optionally create corner filter
     if args.corner_filter_radius is not None:
         # Prep for filtering
