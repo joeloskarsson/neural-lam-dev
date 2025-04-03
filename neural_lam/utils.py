@@ -124,6 +124,10 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
         "m2m_node_features.pt"
     )  # List of (N_mesh[l], d_mesh_static)
 
+    # Determine 2d or 3d features
+    node_feature_dims = mesh_static_features[0].shape[-1]
+    three_dim_features = node_feature_dims > 2
+
     # Load edges (edge_index)
     m2m_edge_index = BufferList(
         [reindex_func(ei) for ei in loads_file("m2m_edge_index.pt")],
@@ -190,10 +194,16 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     g2m_features = loads_file("g2m_features.pt")  # (M_g2m, d_edge_f)
     m2g_features = loads_file("m2g_features.pt")  # (M_m2g, d_edge_f)
 
-    # Normalize by dividing with longest edge (found in m2m)
-    longest_edge = max(
-        torch.max(level_features[:, 0]) for level_features in m2m_features
-    )  # Col. 0 is length
+    if three_dim_features:
+        # For trigraphs the edge features are already rescaled when created
+        # Set to 1. to not rescale here
+        longest_edge = 1.0
+    else:
+        # Normalize by dividing with longest edge (found in m2m)
+        longest_edge = max(
+            torch.max(level_features[:, 0]) for level_features in m2m_features
+        )  # Col. 0 is length
+
     m2m_features = BufferList(m2m_features, persistent=False)
     m2m_features /= longest_edge
     g2m_features = g2m_features / longest_edge
@@ -208,17 +218,21 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     ), "Inconsistent number of levels in mesh"
 
     # Get lat-lons
-    mesh_lat_lon = [
-        torch.tensor(
-            ccrs.PlateCarree().transform_points(
-                datastore.coords_projection,
-                mesh_coords[:, 0].numpy(),
-                mesh_coords[:, 1].numpy(),
-            ),
-            dtype=torch.float32,
-        )
-        for mesh_coords in mesh_static_features
-    ]
+    if tri_graph:
+        # Saved lat-lon, from triangular graph
+        mesh_lat_lon = loads_file("mesh_lat_lon.pt")
+    else:
+        mesh_lat_lon = [
+            torch.tensor(
+                ccrs.PlateCarree().transform_points(
+                    datastore.coords_projection,
+                    mesh_coords[:, 0].numpy(),
+                    mesh_coords[:, 1].numpy(),
+                ),
+                dtype=torch.float32,
+            )
+            for mesh_coords in mesh_static_features
+        ]
 
     if hierarchical:
         # Load up and down edges and features
