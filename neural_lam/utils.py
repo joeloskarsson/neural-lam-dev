@@ -218,7 +218,7 @@ def load_graph(graph_dir_path, datastore, device="cpu"):
     ), "Inconsistent number of levels in mesh"
 
     # Get lat-lons
-    if tri_graph:
+    if three_dim_features:
         # Saved lat-lon, from triangular graph
         mesh_lat_lon = loads_file("mesh_lat_lon.pt")
     else:

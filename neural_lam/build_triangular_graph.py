@@ -174,6 +174,7 @@ def main():
             datastore,
             grid_chull,
             rotate_to_point=rot_point,
+            two_dim_features=args.two_dim_features,
         )
         print("Created hierarchical graph with levels:")
         for level_i, mesh in enumerate(m2m_graphs):
