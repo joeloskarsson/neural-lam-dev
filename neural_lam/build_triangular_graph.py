@@ -85,6 +85,12 @@ def main():
         default=1.8,
     )
     parser.add_argument(
+        "--two_dim_features",
+        action="store_true",
+        help="Compute graph features in the 2D CRS of the datastore projection,"
+        "instead of using 3D cartestian coordinates.",
+    )
+    parser.add_argument(
         "--allow_disconnected",
         action="store_true",
         help="Allow disconnected nodes in g2m. This is generally a bad idea and"
@@ -219,7 +225,9 @@ def main():
         )
         m2m_graphs = [merged_mesh]
     mesh_graph_features = [
-        gcreate.create_mesh_graph_features(mesh_graph, datastore)
+        gcreate.create_mesh_graph_features(
+            mesh_graph, datastore, two_dim_features=args.two_dim_features
+        )
         for mesh_graph in m2m_graphs
     ]
     # Ordering: edge_index, node_features, edge_features, lat_lon
@@ -330,6 +338,7 @@ def main():
         datastore,
         sender_coords=grid_lat_lon,
         receiver_mesh=grid_con_mesh,
+        two_dim_features=args.two_dim_features,
     )
 
     # Save g2m
@@ -355,6 +364,7 @@ def main():
         datastore,
         receiver_coords=grid_decode_lat_lon,
         sender_mesh=grid_con_mesh,
+        two_dim_features=args.two_dim_features,
     )
 
     if args.plot:
