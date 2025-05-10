@@ -501,7 +501,7 @@ class GraphEFM(ARModel):
         forcing_features: (B, pred_steps, num_grid_nodes, d_forcing), where
             index 0 corresponds to index 1 of init_states
         """
-        init_states, target_states, forcing_features = batch
+        init_states, target_states, forcing_features, _ = batch
 
         prev_prev_state = init_states[:, 0]  # (B, num_grid_nodes, d_state)
         prev_state = init_states[:, 1]  # (B, num_grid_nodes, d_state)
@@ -538,7 +538,7 @@ class GraphEFM(ARModel):
 
             # Overwrite border with true state
             new_state = (
-                self.border_mask * target_state
+                self.boundary_mask * target_state
                 + self.interior_mask * predicted_state
             )
 
@@ -733,7 +733,7 @@ class GraphEFM(ARModel):
 
             # Overwrite border with true state
             new_state = (
-                self.border_mask * current_state
+                self.boundary_mask * current_state
                 + self.interior_mask * pred_state
             )
 
@@ -757,11 +757,12 @@ class GraphEFM(ARModel):
 
         return prediction, pred_std
 
-    def plot_examples(self, batch, n_examples, prediction=None):
+    def plot_examples(self, batch, n_examples, split, prediction=None):
         """
         Plot ensemble forecast + mean and std
+        (split argument should be unused, only for compatibility with ARModel)
         """
-        init_states, target_states, forcing_features = batch
+        init_states, target_states, forcing_features, _ = batch
 
         trajectories, _ = self.sample_trajectories(
             init_states,
@@ -772,8 +773,8 @@ class GraphEFM(ARModel):
         # (B, S, pred_steps, num_grid_nodes, d_f)
 
         # Rescale to original data scale
-        traj_rescaled = trajectories * self.data_std + self.data_mean
-        target_rescaled = target_states * self.data_std + self.data_mean
+        traj_rescaled = trajectories * self.state_std + self.state_mean
+        target_rescaled = target_states * self.state_std + self.state_mean
 
         # Compute mean and std of ensemble
         ens_mean = torch.mean(
@@ -824,7 +825,9 @@ class GraphEFM(ARModel):
                 ),
                 start=1,
             ):
-                time_title_part = f"t={t_i} ({self.step_length*t_i} h)"
+                time_title_part = (
+                    f"t={t_i} ({self._datastore.step_length*t_i} h)"
+                )
                 # Create one figure per variable at this time step
                 var_figs = [
                     vis.plot_ensemble_prediction(
@@ -832,7 +835,7 @@ class GraphEFM(ARModel):
                         target_t[:, var_i],
                         ens_mean_t[:, var_i],
                         ens_std_t[:, var_i],
-                        self.interior_mask[:, 0],
+                        self._datastore,
                         title=f"{var_name} ({var_unit}), {time_title_part}",
                         vrange=var_vrange,
                     )
@@ -873,7 +876,7 @@ class GraphEFM(ARModel):
         ens_mse_batch: (B, pred_steps, d_f)
         """
         # Compute and store metrics for ensemble forecast
-        init_states, target_states, forcing_features = batch
+        init_states, target_states, forcing_features, _ = batch
 
         trajectories, traj_stds = self.sample_trajectories(
             init_states,
@@ -936,11 +939,7 @@ class GraphEFM(ARModel):
             and self.n_example_pred > 0
         ):
             # Roll out trajectories using variational distribution (encoder)
-            (
-                init_states,
-                target_states,
-                forcing_features,
-            ) = batch
+            (init_states, target_states, forcing_features, _) = batch
             # Only create ens. forecast for as many examples as needed
             init_states = init_states[: self.n_example_pred]
             target_states = target_states[: self.n_example_pred]
@@ -986,7 +985,7 @@ class GraphEFM(ARModel):
 
                         plot_title = (
                             f"{var_name} ({var_unit}), t={step} "
-                            f"({self.step_length*step} h)"
+                            f"({self._datastore.step_length*step} h)"
                         )
 
                         # Make plots
@@ -997,7 +996,7 @@ class GraphEFM(ARModel):
                             target_state,
                             prior_states.mean(dim=0),
                             prior_states.std(dim=0),
-                            self.interior_mask[:, 0],
+                            self._datastore,
                             title=f"{plot_title} (prior)",
                         )
                         log_plot_dict[
@@ -1007,7 +1006,7 @@ class GraphEFM(ARModel):
                             target_state,
                             enc_states.mean(dim=0),
                             enc_states.std(dim=0),
-                            self.interior_mask[:, 0],
+                            self._datastore,
                             title=f"{plot_title} (vi)",
                         )
 
