@@ -5,7 +5,7 @@ import torch
 import wandb
 
 # First-party
-from neural_lam import constants, metrics, utils, vis
+from neural_lam import metrics, utils, vis
 from neural_lam.models.ar_model import ARModel
 from neural_lam.models.constant_latent_encoder import ConstantLatentEncoder
 from neural_lam.models.graph_latent_decoder import GraphLatentDecoder

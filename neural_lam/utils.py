@@ -13,7 +13,7 @@ from torch import nn
 from tueplots import bundles, figsizes
 
 # Local
-from ..interaction_net import InteractionNet
+from . import interaction_net
 from .custom_loggers import CustomMLFlowLogger
 
 
@@ -368,7 +368,7 @@ def make_gnn_seq(edge_index, num_gnn_layers, hidden_layers, hidden_dim):
         "mesh_rep, edge_rep",
         [
             (
-                InteractionNet(
+                interaction_net.InteractionNet(
                     edge_index,
                     hidden_dim,
                     hidden_layers=hidden_layers,
