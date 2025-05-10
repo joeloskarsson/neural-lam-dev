@@ -11,11 +11,20 @@ Also global forecasting is possible, but currently on a [different branch](https
 The code uses [PyTorch](https://pytorch.org/) and [PyTorch Lightning](https://lightning.ai/pytorch-lightning).
 Graph Neural Networks are implemented using [PyG](https://pyg.org/) and logging is set up through [Weights & Biases](https://wandb.ai/).
 
-The repository contains LAM versions of:
+# This Branch: Probabilistic LAM Forecasting
+<p align="middle">
+    <img src="figures/graph_efm_forecast_nlwrs.gif" width="700"/>
+</p>
+<p align="middle">
+    <em>Example ensemble forecast from Graph-EFM for net solar longwave radiation.</em>
+</p>
 
-* The graph-based model from [Keisler (2022)](https://arxiv.org/abs/2202.07575).
-* GraphCast, by [Lam et al. (2023)](https://arxiv.org/abs/2212.12794).
-* The hierarchical model from [Oskarsson et al. (2023)](https://arxiv.org/abs/2309.17370).
+This branch contains the code for our paper [*Probabilistic Weather Forecasting with Hierarchical Graph Neural Networks*](https://arxiv.org/abs/2406.04759), for Limited Area Modeling (LAM).
+In particular, it contains implementations of:
+
+* Our ensemble forecasting model Graph-EFM.
+* The hierarchical Graph-FM model (also called Hi-LAM in [Oskarsson et al. (2023)](https://arxiv.org/abs/2309.17370) and on the `main` branch).
+* Our re-implementation of GraphCast, by [Lam et al. (2023)](https://arxiv.org/abs/2212.12794).
 
 # Publications
 For a more in-depth scientific introduction to machine learning for LAM weather forecasting see the publications listed here.
@@ -433,39 +442,35 @@ A few of the key ones are outlined below:
 Checkpoints of trained models are stored in the `saved_models` directory.
 The implemented models are:
 
-### Graph-LAM
-This is the basic graph-based LAM model.
+### GraphCast
+This is our re-implementation of GraphCast, and really can be used with any type of non-hierarchical graph (not just multi-scale).
 The encode-process-decode framework is used with a mesh graph in order to make one-step pedictions.
-This model class is used both for the L1-LAM and GC-LAM models from the [paper](#graph-based-neural-weather-prediction-for-limited-area-modeling), only with different graphs.
 
-To train 1L-LAM use
+To train GraphCast use
 ```
-python -m neural_lam.train_model --model graph_lam --graph 1level ...
-```
-
-To train GC-LAM use
-```
-python -m neural_lam.train_model --model graph_lam --graph multiscale ...
+python -m neural_lam.train_model --model graphcast --graph multiscale ...
 ```
 
-### Hi-LAM
-A version of Graph-LAM that uses a hierarchical mesh graph and performs sequential message passing through the hierarchy during processing.
+### Graph-FM
+Deterministic graph-based forecasting model that uses a hierarchical mesh graph and performs sequential message passing through the hierarchy during processing.
 
-To train Hi-LAM use
+To train Graph-FM use
 ```
-python -m neural_lam.train_model --model hi_lam --graph hierarchical ...
-```
-
-### Hi-LAM-Parallel
-A version of Hi-LAM where all message passing in the hierarchical mesh (up, down, inter-level) is ran in parallel.
-Not included in the paper as initial experiments showed worse results than Hi-LAM, but could be interesting to try in more settings.
-
-To train Hi-LAM-Parallel use
-```
-python -m neural_lam.train_model --model hi_lam_parallel --graph hierarchical ...
+python -m neural_lam.train_model --model graph_fm --graph hierarchical ...
 ```
 
-Checkpoint files for our models trained on the MEPS data are available upon request.
+### Graph-EFM
+This is the probabibilistic graph-based ensemble model.
+The same model can be used both with multi-scale and hierarchical graphs, with different behaviour internally.
+
+To train Graph-EFM use e.g.
+```
+python -m neural_lam.train_model --model graph_efm --graph multiscale ...
+```
+or
+```
+python -m neural_lam.train_model --model graph_efm --graph hierarchical ...
+```
 
 ### High Performance Computing
 
