@@ -4,14 +4,16 @@ import numpy as np
 import torch
 import wandb
 
-# First-party
-from neural_lam import metrics, utils, vis
-from neural_lam.models.ar_model import ARModel
-from neural_lam.models.constant_latent_encoder import ConstantLatentEncoder
-from neural_lam.models.graph_latent_decoder import GraphLatentDecoder
-from neural_lam.models.graph_latent_encoder import GraphLatentEncoder
-from neural_lam.models.hi_graph_latent_decoder import HiGraphLatentDecoder
-from neural_lam.models.hi_graph_latent_encoder import HiGraphLatentEncoder
+# Local
+from .. import metrics, utils, vis
+from ..config import NeuralLAMConfig
+from ..datastore import BaseDatastore
+from .ar_model import ARModel
+from .constant_latent_encoder import ConstantLatentEncoder
+from .graph_latent_decoder import GraphLatentDecoder
+from .graph_latent_encoder import GraphLatentEncoder
+from .hi_graph_latent_decoder import HiGraphLatentDecoder
+from .hi_graph_latent_encoder import HiGraphLatentEncoder
 
 
 class GraphEFM(ARModel):
@@ -19,19 +21,30 @@ class GraphEFM(ARModel):
     Graph-based Ensemble Forecasting Model
     """
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(
+        self,
+        args,
+        config: NeuralLAMConfig,
+        datastore: BaseDatastore,
+    ):
+        super().__init__(args, config, datastore)
 
         assert (
             args.n_example_pred <= args.batch_size
         ), "Can not plot more examples than batch size in GraphEFM"
         self.sample_obs_noise = bool(args.sample_obs_noise)
         self.ensemble_size = args.ensemble_size
+        self.num_latents_plot = args.num_latents_plot
+        self.var_leads_val_plot = args.var_leads_val_plot
         self.kl_beta = args.kl_beta
         self.crps_weight = args.crps_weight
 
         # Load graph with static features
-        self.hierarchical_graph, graph_ldict = utils.load_graph(args.graph)
+        graph_dir_path = datastore.root_path / "graph" / args.graph
+        self.hierarchical_graph, graph_ldict = utils.load_graph(
+            graph_dir_path=graph_dir_path
+        )
+
         for name, attr_value in graph_ldict.items():
             # Make BufferLists module members and register tensors as buffers
             if isinstance(attr_value, torch.Tensor):
@@ -41,7 +54,8 @@ class GraphEFM(ARModel):
 
         # Specify dimensions of data
         # grid_dim from data + static
-        grid_current_dim = self.grid_dim + constants.GRID_STATE_DIM
+        grid_state_dim = self._datastore.get_num_data_vars("state")
+        grid_current_dim = self.grid_dim + grid_state_dim
         g2m_dim = self.g2m_features.shape[1]
         m2g_dim = self.m2g_features.shape[1]
 
@@ -193,6 +207,7 @@ class GraphEFM(ARModel):
                 self.mesh_down_edge_index,
                 args.hidden_dim,
                 latent_dim,
+                grid_state_dim,
                 args.processor_layers,
                 hidden_layers=args.hidden_layers,
                 output_std=bool(args.output_std),
@@ -215,6 +230,7 @@ class GraphEFM(ARModel):
                 self.m2g_edge_index,
                 args.hidden_dim,
                 latent_dim,
+                grid_state_dim,
                 args.processor_layers,
                 hidden_layers=args.hidden_layers,
                 output_std=bool(args.output_std),
@@ -822,8 +838,8 @@ class GraphEFM(ARModel):
                     )
                     for var_i, (var_name, var_unit, var_vrange) in enumerate(
                         zip(
-                            constants.PARAM_NAMES_SHORT,
-                            constants.PARAM_UNITS,
+                            self._datastore.get_vars_names("state"),
+                            self._datastore.get_vars_units("state"),
                             var_vranges,
                         )
                     )
@@ -834,7 +850,7 @@ class GraphEFM(ARModel):
                     {
                         f"{var_name}_{example_title}": wandb.Image(fig)
                         for var_name, fig in zip(
-                            constants.PARAM_NAMES_SHORT, var_figs
+                            self._datastore.get_vars_names("state"), var_figs
                         )
                     }
                 )
@@ -951,9 +967,12 @@ class GraphEFM(ARModel):
                 # prior_traj and enc traj are
                 # (S, pred_steps, num_grid_nodes, d_f)
 
-                for var_i, timesteps in constants.VAL_PLOT_VARS.items():
-                    var_name = constants.PARAM_NAMES_SHORT[var_i]
-                    var_unit = constants.PARAM_UNITS[var_i]
+                var_name_list = self._datastore.get_vars_names("state")
+                var_unit_list = self._datastore.get_vars_units("state")
+
+                for var_i, timesteps in self.var_leads_val_plot.items():
+                    var_name = var_name_list[var_i]
+                    var_unit = var_unit_list[var_i]
                     for step in timesteps:
                         prior_states = prior_traj[
                             :, step - 1, :, var_i
@@ -1012,7 +1031,7 @@ class GraphEFM(ARModel):
                 grid_prev_emb, graph_emb=graph_emb
             )  # Gaussian, (B, num_mesh_nodes, d_latent)
             prior_samples = prior_dist.rsample(
-                (constants.LATENT_SAMPLES_PLOT,)
+                (self.num_latents_plot,)
             ).transpose(
                 0, 1
             )  # (B, samples, num_mesh_nodes, d_latent)
@@ -1020,9 +1039,7 @@ class GraphEFM(ARModel):
             vi_dist = self.encoder(
                 grid_current_emb, graph_emb=graph_emb
             )  # Gaussian, (B, num_mesh_nodes, d_latent)
-            vi_samples = vi_dist.rsample(
-                (constants.LATENT_SAMPLES_PLOT,)
-            ).transpose(
+            vi_samples = vi_dist.rsample((self.num_latents_plot,)).transpose(
                 0, 1
             )  # (B, samples, num_mesh_nodes, d_latent)
 

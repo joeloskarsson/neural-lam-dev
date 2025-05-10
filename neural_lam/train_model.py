@@ -38,8 +38,8 @@ def main(input_args=None):
     parser.add_argument(
         "--model",
         type=str,
-        default="graph_lam",
-        help="Model architecture to train/evaluate (default: graph_lam)",
+        default="graphcast",
+        help="Model architecture to train/evaluate (default: graphcast)",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="random seed (default: 42)"
@@ -244,6 +244,12 @@ def main(input_args=None):
         help="Number of example predictions to plot during val/test "
         "(default: 1)",
     )
+    parser.add_argument(
+        "--num_latents_plot",
+        type=int,
+        default=4,
+        help="Number of samples of latent variable to plot (default: 4)",
+    )
 
     # Logger Settings
     parser.add_argument(
@@ -280,6 +286,13 @@ def main(input_args=None):
              metrics (e.g. '{"1": [1, 2], "3": [3, 4]}')""",
     )
     parser.add_argument(
+        "--var_leads_val_plot",
+        type=str,
+        default="{}",
+        help="""JSON string with variable-IDs and lead times to plot during
+            validation step (e.g. '{"1": [1, 2], "3": [3, 4]}')""",
+    )
+    parser.add_argument(
         "--num_past_forcing_steps",
         type=int,
         default=1,
@@ -291,17 +304,20 @@ def main(input_args=None):
         default=1,
         help="Number of future time steps to use as input for forcing data",
     )
-    args = parser.parse_args(input_args)
-    args.var_leads_metrics_watch = {
-        int(k): v for k, v in json.loads(args.var_leads_metrics_watch).items()
-    }
     parser.add_argument(
         "--ensemble_size",
         type=int,
         default=5,
         help="Number of ensemble members during evaluation (default: 5)",
     )
-    args = parser.parse_args()
+
+    args = parser.parse_args(input_args)
+    args.var_leads_metrics_watch = {
+        int(k): v for k, v in json.loads(args.var_leads_metrics_watch).items()
+    }
+    args.var_leads_val_plot = {
+        int(k): v for k, v in json.loads(args.var_leads_val_plot).items()
+    }
 
     # Asserts for arguments
     assert (
