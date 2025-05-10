@@ -127,7 +127,13 @@ def plot_prediction(
 
 @matplotlib.rc_context(utils.fractional_plot_bundle(1))
 def plot_ensemble_prediction(
-    samples, target, ens_mean, ens_std, obs_mask, title=None, vrange=None
+    samples,
+    target,
+    ens_mean,
+    ens_std,
+    datastore: BaseRegularGridDatastore,
+    title=None,
+    vrange=None,
 ):
     """
     Plot example predictions, ground truth, mean and std.-dev.
@@ -150,16 +156,15 @@ def plot_ensemble_prediction(
         vmin, vmax = vrange
 
     # Set up masking of border region
-    mask_reshaped = obs_mask.reshape(*constants.GRID_SHAPE)
-    pixel_alpha = (
-        mask_reshaped.clamp(0.7, 1).cpu().numpy()
-    )  # Faded border region
+    da_mask = datastore.unstack_grid_coords(datastore.boundary_mask).T
+    mask_values = np.invert(da_mask.values.astype(bool)).astype(float)
+    pixel_alpha = mask_values.clip(0.7, 1)  # Faded border region
 
     fig, axes = plt.subplots(
         3,
         3,
         figsize=(15, 15),
-        subplot_kw={"projection": constants.LAMBERT_PROJ},
+        subplot_kw={"projection": datastore.coords_projection},
     )
     axes = axes.flatten()
 
@@ -167,6 +172,7 @@ def plot_ensemble_prediction(
     gt_im = plot_on_axis(
         axes[0],
         target,
+        datastore,
         alpha=pixel_alpha,
         vmin=vmin,
         vmax=vmax,
@@ -175,13 +181,14 @@ def plot_ensemble_prediction(
     plot_on_axis(
         axes[1],
         ens_mean,
+        datastore,
         alpha=pixel_alpha,
         vmin=vmin,
         vmax=vmax,
         ax_title="Ens. Mean",
     )
     std_im = plot_on_axis(
-        axes[2], ens_std, alpha=pixel_alpha, ax_title="Ens. Std."
+        axes[2], ens_std, datastore, alpha=pixel_alpha, ax_title="Ens. Std."
     )  # Own vrange
 
     # Plot samples
@@ -191,6 +198,7 @@ def plot_ensemble_prediction(
         plot_on_axis(
             ax,
             member,
+            datastore,
             alpha=pixel_alpha,
             vmin=vmin,
             vmax=vmax,
@@ -215,16 +223,31 @@ def plot_ensemble_prediction(
     return fig
 
 
-def plot_on_axis(ax, data, alpha=None, vmin=None, vmax=None, ax_title=None):
+def plot_on_axis(
+    ax,
+    data,
+    datastore: BaseRegularGridDatastore,
+    alpha=None,
+    vmin=None,
+    vmax=None,
+    ax_title=None,
+):
     """
     Plot weather state on given axis
     """
     ax.coastlines()  # Add coastline outlines
-    data_grid = data.reshape(*constants.GRID_SHAPE).cpu().numpy()
+    extent = datastore.get_xy_extent("state")
+    data_grid = (
+        data.reshape(
+            [datastore.grid_shape_state.x, datastore.grid_shape_state.y]
+        )
+        .T.cpu()
+        .numpy()
+    )
     im = ax.imshow(
         data_grid,
         origin="lower",
-        extent=constants.GRID_LIMITS,
+        extent=extent,
         alpha=alpha,
         vmin=vmin,
         vmax=vmax,
