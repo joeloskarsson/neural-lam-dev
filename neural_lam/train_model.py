@@ -381,17 +381,6 @@ def main(input_args=None):
             save_last=True,
         )
     )
-    # Save checkpoints for minimum loss at specific lead times
-    for unroll_time in constants.VAL_STEP_CHECKPOINTS:
-        metric_name = f"val_loss_unroll{unroll_time}"
-        callbacks.append(
-            pl.callbacks.ModelCheckpoint(
-                dirpath=f"saved_models/{run_name}",
-                filename=f"min_{metric_name}",
-                monitor=metric_name,
-                mode="min",
-            )
-        )
 
     # Training strategy
     # If doing pure autoencoder training (kl_beta = 0), the prior network is not
