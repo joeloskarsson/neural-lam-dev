@@ -120,9 +120,10 @@ class GraphEFM(ARModel):
                     ]
                 )
         else:
-            self.num_mesh_nodes, mesh_static_dim = (
-                self.mesh_static_features.shape
-            )
+            (
+                self.num_mesh_nodes,
+                mesh_static_dim,
+            ) = self.mesh_static_features.shape
             print(
                 f"Loaded graph with {self.num_grid_nodes + self.num_mesh_nodes}"
                 f"nodes ({self.num_grid_nodes} grid, "
@@ -500,12 +501,15 @@ class GraphEFM(ARModel):
             prev_states_stacked = torch.stack(
                 (prev_prev_state, prev_state), dim=1
             )  # (B, 2, num_grid_nodes, d_state)
-            loss_like_term, loss_kl_term, pred_mean, pred_std = (
-                self.compute_step_loss(
-                    prev_states_stacked,
-                    target_state,
-                    forcing,
-                )
+            (
+                loss_like_term,
+                loss_kl_term,
+                pred_mean,
+                pred_std,
+            ) = self.compute_step_loss(
+                prev_states_stacked,
+                target_state,
+                forcing,
             )
             # (B,), (B,), (B, num_grid_nodes, d_state),
             # pred_std is (B, num_grid_nodes, d_state) or (d_state)
@@ -899,9 +903,13 @@ class GraphEFM(ARModel):
         batch_idx = args[0]
 
         # Run ensemble forecast
-        prior_trajectories, _, _, spread_squared_batch, ens_mse_batch = (
-            self.ensemble_common_step(batch)
-        )
+        (
+            prior_trajectories,
+            _,
+            _,
+            spread_squared_batch,
+            ens_mse_batch,
+        ) = self.ensemble_common_step(batch)
         self.val_metrics["spread_squared"].append(spread_squared_batch)
         self.val_metrics["ens_mse"].append(ens_mse_batch)
 
@@ -1022,9 +1030,9 @@ class GraphEFM(ARModel):
             for example_i, (prior_ex_samples, vi_ex_samples) in enumerate(
                 zip(prior_samples, vi_samples), start=1
             ):
-                log_plot_dict[f"latent_samples_ex{example_i}"] = (
-                    vis.plot_latent_samples(prior_ex_samples, vi_ex_samples)
-                )
+                log_plot_dict[
+                    f"latent_samples_ex{example_i}"
+                ] = vis.plot_latent_samples(prior_ex_samples, vi_ex_samples)
 
             if not self.trainer.sanity_checking:
                 # Log all plots to wandb

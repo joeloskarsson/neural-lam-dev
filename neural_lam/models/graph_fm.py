@@ -7,6 +7,7 @@ from ..datastore import BaseDatastore
 from ..interaction_net import InteractionNet, PropagationNet
 from .base_hi_graph_model import BaseHiGraphModel
 
+
 class GraphFM(BaseHiGraphModel):
     """
     Hierarchical Graph-based Forecasting Model

@@ -14,7 +14,7 @@ from loguru import logger
 # Local
 from . import utils
 from .config import load_config_and_datastore
-from .models import GraphEFM, GraphFM, GraphCast
+from .models import GraphCast, GraphEFM, GraphFM
 from .weather_dataset import WeatherDataModule
 
 MODELS = {

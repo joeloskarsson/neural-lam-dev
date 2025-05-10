@@ -2,8 +2,8 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 import torch
+import xarray as xr
 
 # Local
 from . import utils

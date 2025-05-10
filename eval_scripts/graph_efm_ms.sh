@@ -13,4 +13,3 @@ python train_model.py\
     --batch_size 1\
     --load paper_checkpoints/graph_efm_ms.ckpt\
     --eval test\
-

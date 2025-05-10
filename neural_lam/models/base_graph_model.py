@@ -8,6 +8,7 @@ from ..datastore import BaseDatastore
 from ..interaction_net import InteractionNet, PropagationNet
 from .ar_model import ARModel
 
+
 class BaseGraphModel(ARModel):
     """
     Base (abstract) class for graph-based models building on

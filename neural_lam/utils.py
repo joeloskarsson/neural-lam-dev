@@ -5,17 +5,17 @@ import warnings
 
 # Third-party
 import pytorch_lightning as pl
-import torch_geometric as pyg
 import torch
-from torch import nn
+import torch_geometric as pyg
 from pytorch_lightning.loggers import MLFlowLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from torch import nn
 from tueplots import bundles, figsizes
 
 # Local
-from .custom_loggers import CustomMLFlowLogger
 from ..interaction_net import InteractionNet
+from .custom_loggers import CustomMLFlowLogger
+
 
 class BufferList(nn.Module):
     """
