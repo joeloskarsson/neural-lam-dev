@@ -2,6 +2,7 @@
 # For LAM model project
 # by Simon Adamov, simon.adamov@meteoswiss.ch
 
+# Standard library
 import argparse
 import io
 import os
@@ -68,12 +69,14 @@ def generate_land_sea_mask(lat, lon, tempdir, projection, high_res_factor=10):
     )
 
     # Maintain y, x order in reshaping
-    aggregated_out_image = high_res_out_image.reshape((
-        ny,
-        high_res_factor,
-        nx,
-        high_res_factor,
-    )).mean(axis=(1, 3))
+    aggregated_out_image = high_res_out_image.reshape(
+        (
+            ny,
+            high_res_factor,
+            nx,
+            high_res_factor,
+        )
+    ).mean(axis=(1, 3))
 
     # Create DataArray with consistent y, x dimensions
     return xr.DataArray(
@@ -122,8 +125,8 @@ def main():
     """Create and save land-sea mask.
 
     CLI:
-        --source_zarr <path>      (path to COSMO zarr; default: cosmo_ml_data.zarr)
-        --output_zarr <path>      (output zarr; default: cosmo_land_sea_mask.zarr)
+        --source_zarr <path> (path to COSMO zarr; default: cosmo_ml_data.zarr)
+        --output_zarr <path> (output zarr; default: cosmo_land_sea_mask.zarr)
     """
 
     parser = argparse.ArgumentParser(description="Generate land-sea mask")
@@ -167,7 +170,9 @@ def main():
     print(f"Land-sea mask saved to {zarr_path} (var='lsm')")
 
     # Use the new plotting function
-    plot_land_sea_mask(zarr_path, Path(zarr_path).parent / "cosmo_land_sea_mask_plot.png")
+    plot_land_sea_mask(
+        zarr_path, Path(zarr_path).parent / "cosmo_land_sea_mask_plot.png"
+    )
 
 
 if __name__ == "__main__":

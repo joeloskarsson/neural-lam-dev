@@ -306,7 +306,7 @@ Coordinates:
 * x                          (x) int64 5kB 0 1 2 3 4 5 ... 577 578 579 580 581
 * y                          (y) int64 3kB 0 1 2 3 4 5 ... 385 386 387 388 389
 Data variables:
-    state                    (start_time, elapsed_forecast_duration, state_feature, x, y) float32 1GB 
+    state                    (start_time, elapsed_forecast_duration, state_feature, x, y) float32 1GB
                              dask.array<chunksize=(1, 1, 57, 582, 390), meta=np.ndarray>
 ```
 
