@@ -12,6 +12,8 @@ sweeps
 *slurm*
 docs/notebooks/plots
 docs/notebooks/tables
+bin/micromamba
+shps
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
