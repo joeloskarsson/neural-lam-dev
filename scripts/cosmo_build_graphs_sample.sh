@@ -1,6 +1,6 @@
 #!/bin/sh
 
-CP=${1:-cosmo_model_config_era5.yaml}
+CP=${1:-cosmo_model_config_era5_sample.yaml}
 
 # Rectangular
 # Mesh node distance in COSMO rotated pole CRS
