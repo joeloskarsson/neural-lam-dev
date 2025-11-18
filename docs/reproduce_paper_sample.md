@@ -124,7 +124,20 @@ regenerate it, you can use the following commands:
 # I have issues with GDAL system library (rasterio backend), hence I install it manually here
 # with micromamba
 if [ ! -x bin/micromamba ]; then
-    curl -Ls https://micro.mamba.pm/api/micromamba/linux-aarch64/latest | tar -xvj bin/micromamba
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)
+            MICROMAMBA_PKG=linux-64
+            ;;
+        aarch64)
+            MICROMAMBA_PKG=linux-aarch64
+            ;;
+        *)
+            echo "Unsupported architecture: $ARCH" >&2
+            exit 1
+            ;;
+    esac
+    curl -Ls "https://micro.mamba.pm/api/micromamba/${MICROMAMBA_PKG}/latest" | tar -xvj bin/micromamba
 fi
 
 if ! bin/micromamba env list | awk '{print $1}' | grep -q '^lam-lsm$'; then
