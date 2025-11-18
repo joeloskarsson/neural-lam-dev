@@ -8,7 +8,7 @@ data
 sweeps
 .vscode
 *.html
-*.zarr
+tests/*.zarr
 *slurm*
 docs/notebooks/plots
 docs/notebooks/tables
