@@ -7,28 +7,135 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration
+# X-axis range (hours) applied to every plot.
+LEAD_TIME_RANGE = (0, 48)
+
+# Each entry: {"file": path, "color": <group-label>, "ls": <group-label>}
+# color  → arbitrary group label (e.g. level count); same label = same color
+# ls     → arbitrary group label (e.g. graph type);  same label = same linestyle
+# Markers are always unique per model (no grouping needed).
+#
+# Colors are drawn in first-seen order from COLORS.
+# Line styles are drawn in first-seen order from LINE_STYLES.
 METRICS_FILES = {
-    "finetune 7.19 ERA margin with interior": (
-        "/iopsstor/scratch/cscs/sadamov/pyprojects_data/"
-        "neural-lam/wandb/run-20250223_094539-ve7jxmni/files/"
-        "test_metrics.pkl"
-    ),
-    "finetune 7.19 IFS margin with interior": (
-        "/iopsstor/scratch/cscs/sadamov/pyprojects_data/"
-        "neural-lam/wandb/run-20250223_082532-333z7dp7/files/"
-        "test_metrics.pkl"
-    ),
+    # 7° grid – rectangular graph
+    "7° Rect HiLAM L2": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_rect_hi2_9966.pkl",
+        "color": "L2",
+        "ls": "rect",
+    },
+    "7° Rect HiLAM L3": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_rect_hi3_6182.pkl",
+        "color": "L3",
+        "ls": "rect",
+    },
+    "7° Rect HiLAM L4": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_rect_hi4_6457.pkl",
+        "color": "L4",
+        "ls": "rect",
+    },
+    "7° Rect GraphLAM L3": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_rect_ms3_4965.pkl",
+        "color": "L3",
+        "ls": "rect",
+    },
+    "7° Rect GraphLAM L4": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_rect_ms4_2431.pkl",
+        "color": "L4",
+        "ls": "rect",
+    },
+    # 7° grid – triangular graph
+    "7° Tri HiLAM L3": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_tri_hi3_2904.pkl",
+        "color": "L3",
+        "ls": "tri",
+    },
+    "7° Tri HiLAM L4": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_tri_hi4_3092.pkl",
+        "color": "L4",
+        "ls": "tri",
+    },
+    "7° Tri GraphLAM L3": {
+        "file": "/home/moentu/VSCode/Python/neural-lam/7deg_tri_ms3_0169.pkl",
+        "color": "L3",
+        "ls": "tri",
+    },
 }
 
 VARIABLES = {
-    "U_10M": "10m_u_component_of_wind",
-    "V_10M": "10m_v_component_of_wind",
-    "T_2M": "2m_temperature",
-    "PMSL": "mean_sea_level_pressure",
-    "PS": "surface_pressure",
-    "TOT_PREC": "total_precipitation",
-    "ASOB_S": "surface_net_shortwave_radiation",
-    "ATHB_S": "surface_net_longwave_radiation",
+    # ------ COSMO ------
+    # Surface / near-surface
+    # "U_10M": "10m_u_component_of_wind",
+    # "V_10M": "10m_v_component_of_wind",
+    # "T_2M": "2m_temperature",
+    # "PMSL": "mean_sea_level_pressure",
+    # "PS": "surface_pressure",
+    # "TOT_PREC": "total_precipitation",
+    # "ASOB_S": "surface_net_shortwave_radiation",
+    # "ATHB_S": "surface_net_longwave_radiation",
+    # ------ DANRA / ERA5 (7deg pkl files) ------
+    # Surface / near-surface
+    "u10m": "10m U-wind",
+    "v10m": "10m V-wind",
+    "t2m": "2m Temperature",
+    "pres_seasurface": "Mean Sea-Level Pressure",
+    "pres0m": "Surface Pressure",
+    "swavr0m": "Surface Net SW Radiation",
+    "lwavr0m": "Surface Net LW Radiation",
+    # # Upper-air: geopotential
+    # "z100": "Z 100 hPa",
+    # "z200": "Z 200 hPa",
+    # "z400": "Z 400 hPa",
+    "z600": "Z 600 hPa",
+    # "z700": "Z 700 hPa",
+    # "z850": "Z 850 hPa",
+    # "z925": "Z 925 hPa",
+    # "z1000": "Z 1000 hPa",
+    # # Upper-air: temperature
+    # "t100": "T 100 hPa",
+    # "t200": "T 200 hPa",
+    # "t400": "T 400 hPa",
+    # "t600": "T 600 hPa",
+    # "t700": "T 700 hPa",
+    # "t850": "T 850 hPa",
+    # "t925": "T 925 hPa",
+    # "t1000": "T 1000 hPa",
+    # # Upper-air: relative humidity
+    # "r100": "RH 100 hPa",
+    # "r200": "RH 200 hPa",
+    # "r400": "RH 400 hPa",
+    # "r600": "RH 600 hPa",
+    # "r700": "RH 700 hPa",
+    # "r850": "RH 850 hPa",
+    # "r925": "RH 925 hPa",
+    # "r1000": "RH 1000 hPa",
+    # # Upper-air: U-wind
+    # "u100": "U 100 hPa",
+    # "u200": "U 200 hPa",
+    # "u400": "U 400 hPa",
+    # "u600": "U 600 hPa",
+    # "u700": "U 700 hPa",
+    # "u850": "U 850 hPa",
+    # "u925": "U 925 hPa",
+    # "u1000": "U 1000 hPa",
+    # # Upper-air: V-wind
+    # "v100": "V 100 hPa",
+    # "v200": "V 200 hPa",
+    # "v400": "V 400 hPa",
+    # "v600": "V 600 hPa",
+    # "v700": "V 700 hPa",
+    # "v850": "V 850 hPa",
+    # "v925": "V 925 hPa",
+    # "v1000": "V 1000 hPa",
+    # # Upper-air: vertical velocity (omega)
+    # "tw100": "W 100 hPa",
+    # "tw200": "W 200 hPa",
+    # "tw400": "W 400 hPa",
+    # "tw600": "W 600 hPa",
+    # "tw700": "W 700 hPa",
+    # "tw850": "W 850 hPa",
+    # "tw925": "W 925 hPa",
+    # "tw1000": "W 1000 hPa",
 }
 
 # Colorblind-friendly palette (based on Wong's Nature Methods 2011 & Okabe-Ito)
@@ -81,13 +188,33 @@ UNIT_LOOKUP = {
 }
 
 
-def create_style_dict(metrics_dict):
-    """Create style dictionary for experiments using distinct visual elements"""
+def create_style_dict(metrics_files):
+    """Assign styles from the group labels in each METRICS_FILES entry.
+
+    - **Color**     : same ``color`` group label → same color from COLORS,
+                      assigned in first-seen label order.
+    - **Linestyle** : same ``ls`` group label → same linestyle from LINE_STYLES,
+                      assigned in first-seen label order.
+    - **Marker**    : always unique per model, cycling through MARKERS.
+    """
+    color_values = list(COLORS.values())
+
+    # Build label → palette-entry maps in first-seen order
+    color_map = {}
+    ls_map = {}
+    for entry in metrics_files.values():
+        cg = entry["color"]
+        lg = entry["ls"]
+        if cg not in color_map:
+            color_map[cg] = color_values[len(color_map) % len(color_values)]
+        if lg not in ls_map:
+            ls_map[lg] = LINE_STYLES[len(ls_map) % len(LINE_STYLES)]
+
     styles = {}
-    for i, model_name in enumerate(metrics_dict.keys()):
+    for i, (model_name, entry) in enumerate(metrics_files.items()):
         styles[model_name] = {
-            "color": list(COLORS.values())[i % len(COLORS)],
-            "linestyle": LINE_STYLES[i % len(LINE_STYLES)],
+            "color": color_map[entry["color"]],
+            "linestyle": ls_map[entry["ls"]],
             "marker": MARKERS[i % len(MARKERS)],
         }
     return styles
@@ -115,14 +242,49 @@ def load_metrics(file_path):
         return pickle.load(f)
 
 
-def save_plot(fig, name, time=None, output_dir=None):
-    """Save plots to consistent location."""
+def save_plot(fig, name, time=None, output_dir=None, plot_data=None):
+    """Save plots to consistent location.
+
+    Always produces two PDF variants:
+      * ``<name>.pdf``            – with legend
+      * ``<name>_no_legend.pdf``  – without legend
+
+    When *plot_data* is supplied (a plain dict of str -> array) it is also
+    persisted as ``<name>.npz`` for later programmatic access.
+    """
     if time is not None:
         name = f"{name}_{time.dt.strftime('%Y%m%d_%H').values}"
     if output_dir is None:
         output_dir = "plots"
 
-    fig.savefig(Path(output_dir) / f"{name}.pdf", bbox_inches="tight", dpi=300)
+    # Accept either a Figure object or the pyplot module
+    if hasattr(fig, "gcf"):
+        fig = fig.gcf()
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # --- version WITH legend ---
+    fig.savefig(output_path / f"{name}.pdf", bbox_inches="tight", dpi=300)
+
+    # --- version WITHOUT legend ---
+    # Temporarily hide every legend on every axes, save, then restore.
+    legend_states = []
+    for ax in fig.get_axes():
+        leg = ax.get_legend()
+        if leg is not None:
+            legend_states.append((leg, leg.get_visible()))
+            leg.set_visible(False)
+    fig.savefig(
+        output_path / f"{name}_no_legend.pdf", bbox_inches="tight", dpi=300
+    )
+    for leg, was_visible in legend_states:
+        leg.set_visible(was_visible)
+
+    # --- numerical data as .npz ---
+    if plot_data is not None:
+        np.savez(output_path / f"{name}.npz", **plot_data)
+
     plt.close()
 
 
@@ -155,28 +317,33 @@ def plot_metrics(
                 variables.append(wp_var)
 
     metrics_dict = {
-        model_name: load_metrics(file_path).sel(
+        model_name: load_metrics(entry["file"]).sel(
             lead_time=slice(None, max_lead_time)
         )
-        for model_name, file_path in metrics_files.items()
+        for model_name, entry in metrics_files.items()
     }
 
     if output_dir is not None:
         Path(output_dir).mkdir(exist_ok=True)
 
-    # Create style dictionary based on number of experiments
-    PLOT_STYLES = create_style_dict(metrics_dict)
+    # Create style dictionary from the explicit group keys in metrics_files
+    PLOT_STYLES = create_style_dict(metrics_files)
 
     if combined:
         n_cols = 2
         n_rows = (len(variables) + n_cols - 1) // n_cols
         _ = plt.figure(figsize=(15, 4 * n_rows))
 
+    combined_plot_data = {}  # accumulates data for the combined .npz
+
     for idx, var in enumerate(variables, 1):
         if combined:
             ax = plt.subplot(n_rows, n_cols, idx)
         else:
             _, ax = plt.subplots(figsize=(5, 3), dpi=100)
+
+        var_plot_data = {}  # per-variable data for .npz
+        max_lead_time_hrs_var = 0.0
 
         for model_name, metrics in metrics_dict.items():
             lead_time_hrs = metrics.lead_time.dt.total_seconds() / 3600
@@ -217,6 +384,27 @@ def plot_metrics(
                 **plot_kwargs,
             )
 
+            # Collect data for .npz export
+            safe_key = model_name.replace(" ", "_").replace("/", "_")
+            var_plot_data[f"{safe_key}_lead_times_h"] = np.asarray(
+                lead_time_hrs
+            )
+            var_plot_data[f"{safe_key}_values"] = np.asarray(metric_values)
+            max_lead_time_hrs_var = max(
+                max_lead_time_hrs_var, float(lead_time_hrs.max())
+            )
+
+        # Merge into the combined pool (prefixed with variable name)
+        for k, v in var_plot_data.items():
+            combined_plot_data[f"{var}_{k}"] = v
+
+        # --- 6-hour x-axis ticks (diurnal-cycle-friendly) ---
+        tick_positions = np.arange(
+            LEAD_TIME_RANGE[0], LEAD_TIME_RANGE[1] + 6, 6
+        )
+        ax.set_xticks(tick_positions)
+        ax.set_xlim(*LEAD_TIME_RANGE)
+
         # Common styling
         ax.set_xlabel("Lead Time (hours)", fontsize=10 if combined else 12)
         if var_unit:
@@ -239,7 +427,9 @@ def plot_metrics(
             axis="both", which="major", labelsize=9 if combined else 10
         )
 
-        if idx == 1:
+        # For individual plots always show the legend; for combined only on the
+        # first panel.
+        if not combined or idx == 1:
             ax.legend(
                 frameon=True,
                 facecolor="white",
@@ -250,11 +440,21 @@ def plot_metrics(
 
         if not combined:
             plt.tight_layout()
-            save_plot(plt, f"{var}_{metric_name}", output_dir=output_dir)
+            save_plot(
+                plt,
+                f"{var}_{metric_name}",
+                output_dir=output_dir,
+                plot_data=var_plot_data,
+            )
 
     if combined:
         plt.tight_layout()
-        save_plot(plt, f"combined_{metric_name}", output_dir=output_dir)
+        save_plot(
+            plt,
+            f"combined_{metric_name}",
+            output_dir=output_dir,
+            plot_data=combined_plot_data,
+        )
 
 
 def main():
