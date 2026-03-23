@@ -138,18 +138,20 @@ VARIABLES = {
     # "tw1000": "W 1000 hPa",
 }
 
-# Colorblind-friendly palette (based on Wong's Nature Methods 2011 & Okabe-Ito)
+# Colorblind-friendly palette (Okabe-Ito / Wong Nature Methods 2011).
+# Ordered for line plots on white: high-contrast colours first, yellow and
+# black last (yellow near-invisible on white; black reserved for references).
 COLORS = {
-    "blue": "#56B4E9",  # Sky blue
-    "orange": "#E69F00",  # Orange
-    "green": "#009E73",  # Bluish green
-    "red": "#D55E00",  # Vermilion
-    "purple": "#CC79A7",  # Reddish purple
-    "yellow": "#F0E442",  # Yellow
-    "grey": "#999999",  # Grey
-    "black": "#000000",  # Black
-    "cyan": "#0072B2",  # Blue
-    "brown": "#8C510A",  # Brown
+    "skyblue": "#56B4E9",  # Okabe-Ito 2 – sky blue, lighter
+    "orange": "#E69F00",  # Okabe-Ito 1 – warm, high contrast
+    "green": "#009E73",  # Okabe-Ito 3 – bluish green
+    "red": "#D55E00",  # Okabe-Ito 6 – vermilion  (separates blue/green)
+    "purple": "#CC79A7",  # Okabe-Ito 7 – reddish purple
+    "blue": "#0072B2",  # Okabe-Ito 5 – deep blue, high contrast
+    "brown": "#8C510A",  # extra (not in original 8)
+    "grey": "#999999",  # utility
+    "yellow": "#F0E442",  # Okabe-Ito 4 – last: near-invisible on white
+    "black": "#000000",  # utility / reference lines
 }
 
 # Line styles that are distinguishable
@@ -179,6 +181,13 @@ MARKERS = [
     "*",  # Star
     "h",  # Hexagon
 ]
+
+FONT_SIZES = {
+    "axes": 11,
+    "ticks": 11,
+    "legend": 10,
+    "title": 11,
+}
 
 UNIT_LOOKUP = {
     "m s**-1": "m / s",
@@ -221,15 +230,20 @@ def create_style_dict(metrics_files):
 
 
 # Update plot_kwargs in plot_metrics function
-def get_plot_kwargs(style, model_name, time_step):
+def get_plot_kwargs(style, model_name, lead_time_hrs):
     """Get consistent plot kwargs for all plots"""
+    # Indices where lead time falls exactly on a 6-hour boundary;
+    # drop the last one so no marker appears flush at the right edge.
+    mark_indices = [i for i, h in enumerate(lead_time_hrs) if float(h) % 6 == 0]
+    if len(mark_indices) > 1:
+        mark_indices = mark_indices[:-1]
     return {
         "label": model_name,
         "color": style["color"],
         "linestyle": style["linestyle"],
         "marker": style["marker"],
         "markersize": 4,
-        "markevery": int(12 / time_step),  # Every 12 h
+        "markevery": mark_indices or 1,
         "markerfacecolor": "white",
         "markeredgewidth": 1.0,
         "linewidth": 1.5,
@@ -264,10 +278,7 @@ def save_plot(fig, name, time=None, output_dir=None, plot_data=None):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # --- version WITH legend ---
-    fig.savefig(output_path / f"{name}.pdf", bbox_inches="tight", dpi=300)
-
-    # --- version WITHOUT legend ---
+    # --- version WITHOUT legend (default) ---
     # Temporarily hide every legend on every axes, save, then restore.
     legend_states = []
     for ax in fig.get_axes():
@@ -275,11 +286,14 @@ def save_plot(fig, name, time=None, output_dir=None, plot_data=None):
         if leg is not None:
             legend_states.append((leg, leg.get_visible()))
             leg.set_visible(False)
-    fig.savefig(
-        output_path / f"{name}_no_legend.pdf", bbox_inches="tight", dpi=300
-    )
+    fig.savefig(output_path / f"{name}.pdf", bbox_inches="tight", dpi=300)
     for leg, was_visible in legend_states:
         leg.set_visible(was_visible)
+
+    # --- version WITH legend ---
+    fig.savefig(
+        output_path / f"{name}_with_legend.pdf", bbox_inches="tight", dpi=300
+    )
 
     # --- numerical data as .npz ---
     if plot_data is not None:
@@ -312,7 +326,7 @@ def plot_metrics(
         wind_pair_vars = {}
     else:
         # Make sure all of wind pair variables are also in variables list
-        for wp_var in wind_pair_vars.keys():
+        for wp_var in wind_pair_vars:
             if wp_var not in variables:
                 variables.append(wp_var)
 
@@ -344,15 +358,10 @@ def plot_metrics(
 
         var_plot_data = {}  # per-variable data for .npz
         max_lead_time_hrs_var = 0.0
+        all_var_y = []  # collect for tight y-limit
 
         for model_name, metrics in metrics_dict.items():
             lead_time_hrs = metrics.lead_time.dt.total_seconds() / 3600
-            # Time step in h
-            time_step = (
-                metrics.lead_time.diff("lead_time")[0]
-                .values.astype("timedelta64[h]")
-                .astype(int)
-            )
 
             if var in wind_pair_vars:
                 # Derive this metric value from pair of wind fields
@@ -375,14 +384,24 @@ def plot_metrics(
             if var_unit in UNIT_LOOKUP:
                 var_unit = UNIT_LOOKUP[var_unit]
 
+            lth = np.asarray(lead_time_hrs)
+            mv = np.asarray(metric_values)
+            # Clip data line at LEAD_TIME_RANGE[1]; xlim extends 2 h further
+            # so the last point isn't flush against the frame.
+            plot_mask = lth <= LEAD_TIME_RANGE[1]
+
             style = PLOT_STYLES[model_name]
-            plot_kwargs = get_plot_kwargs(style, model_name, time_step)
+            plot_kwargs = get_plot_kwargs(style, model_name, lth[plot_mask])
 
             ax.plot(
-                lead_time_hrs,
-                metric_values,
+                lth[plot_mask],
+                mv[plot_mask],
                 **plot_kwargs,
             )
+
+            y_mask = (lth >= LEAD_TIME_RANGE[0]) & plot_mask
+            vals = mv[y_mask]
+            all_var_y.extend(vals[~np.isnan(vals)].tolist())
 
             # Collect data for .npz export
             safe_key = model_name.replace(" ", "_").replace("/", "_")
@@ -398,33 +417,29 @@ def plot_metrics(
         for k, v in var_plot_data.items():
             combined_plot_data[f"{var}_{k}"] = v
 
+        # --- tight y-limits (5 % pad above/below data range) ---
+        if all_var_y:
+            y_lo, y_hi = min(all_var_y), max(all_var_y)
+            y_pad = (y_hi - y_lo) * 0.05
+            ax.set_ylim(y_lo - y_pad, y_hi + y_pad)
+
         # --- 6-hour x-axis ticks (diurnal-cycle-friendly) ---
         tick_positions = np.arange(
             LEAD_TIME_RANGE[0], LEAD_TIME_RANGE[1] + 6, 6
         )
         ax.set_xticks(tick_positions)
-        ax.set_xlim(*LEAD_TIME_RANGE)
+        ax.set_xlim(LEAD_TIME_RANGE[0], LEAD_TIME_RANGE[1] + 2)
 
         # Common styling
-        ax.set_xlabel("Lead Time (hours)", fontsize=10 if combined else 12)
+        ax.set_xlabel("Lead Time (hours)", fontsize=FONT_SIZES["axes"])
         if var_unit:
             ylabel = f"{metric_name.upper()} (${var_unit}$)"
         else:
             ylabel = f"{metric_name.upper()}"
-        ax.set_ylabel(
-            ylabel,
-            fontsize=10 if combined else 12,
-        )
-        #  ax.set_title(
-        #  f"{var}"
-        #  if combined
-        #  else f"{var} {metric_name.upper()} vs Forecast Lead Time",
-        #  fontsize=12,
-        #  fontweight="bold",
-        #  )
+        ax.set_ylabel(ylabel, fontsize=FONT_SIZES["axes"])
         ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(
-            axis="both", which="major", labelsize=9 if combined else 10
+            axis="both", which="major", labelsize=FONT_SIZES["ticks"]
         )
 
         # For individual plots always show the legend; for combined only on the
@@ -434,7 +449,7 @@ def plot_metrics(
                 frameon=True,
                 facecolor="white",
                 edgecolor="black",
-                fontsize=10,
+                fontsize=FONT_SIZES["legend"],
                 loc=legend_placement,
             )
 
