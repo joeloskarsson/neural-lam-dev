@@ -200,22 +200,46 @@ UNIT_LOOKUP = {
 def create_style_dict(metrics_files):
     """Assign styles from the group labels in each METRICS_FILES entry.
 
-    - **Color**     : same ``color`` group label → same color from COLORS,
-                      assigned in first-seen label order.
+    - **Color**     : If all ``color`` group labels are numeric, a perceptually
+                      uniform sequential colormap (viridis) is used so that
+                      differences in value are visible as a gradient. Otherwise,
+                      colors are drawn in first-seen order from COLORS.
     - **Linestyle** : same ``ls`` group label → same linestyle from LINE_STYLES,
                       assigned in first-seen label order.
     - **Marker**    : always unique per model, cycling through MARKERS.
     """
     color_values = list(COLORS.values())
 
-    # Build label → palette-entry maps in first-seen order
-    color_map = {}
-    ls_map = {}
+    # Collect unique color group labels in first-seen order
+    color_labels_seen = []
     for entry in metrics_files.values():
         cg = entry["color"]
+        if cg not in color_labels_seen:
+            color_labels_seen.append(cg)
+
+    # If all color group labels are numeric, use a sequential gradient
+    try:
+        numeric_labels = sorted(color_labels_seen, key=lambda x: float(x))
+        n = len(numeric_labels)
+        # Sample viridis at evenly-spaced positions, avoiding the very dark end
+        cmap = plt.get_cmap("viridis")
+        gradient_colors = [
+            cmap(0.15 + 0.7 * i / max(n - 1, 1)) for i in range(n)
+        ]
+        color_map = {
+            lbl: gradient_colors[i] for i, lbl in enumerate(numeric_labels)
+        }
+    except (ValueError, TypeError):
+        # Non-numeric labels: fall back to discrete palette
+        color_map = {
+            lbl: color_values[i % len(color_values)]
+            for i, lbl in enumerate(color_labels_seen)
+        }
+
+    # Build linestyle map in first-seen order
+    ls_map = {}
+    for entry in metrics_files.values():
         lg = entry["ls"]
-        if cg not in color_map:
-            color_map[cg] = color_values[len(color_map) % len(color_values)]
         if lg not in ls_map:
             ls_map[lg] = LINE_STYLES[len(ls_map) % len(LINE_STYLES)]
 
@@ -431,7 +455,7 @@ def plot_metrics(
         ax.set_xlim(LEAD_TIME_RANGE[0], LEAD_TIME_RANGE[1] + 2)
 
         # Common styling
-        ax.set_xlabel("Lead Time (hours)", fontsize=FONT_SIZES["axes"])
+        ax.set_xlabel("Lead Time (h)", fontsize=FONT_SIZES["axes"])
         if var_unit:
             ylabel = f"{metric_name.upper()} (${var_unit}$)"
         else:
