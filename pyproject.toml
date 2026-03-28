@@ -27,6 +27,11 @@ dependencies = [
     "numpy<2.0.0",
     "dask~=2025.3.0",
     "xarray~=2025.3.1",
+    "pandas>=2.0.0",
+    "geopandas>=1.0.0",
+    "pysteps>=1.8.0",
+    "scores>=2.0.0",
+    "requests>=2.28.0",
     "mllam-data-prep[latlon-domain-crop] @ git+https://github.com/sadamov/mllam-data-prep.git@building-ml-lams",
     "weather-model-graphs @ git+https://github.com/joeloskarsson/weather-model-graphs.git@building-ml-lams"
 ]
