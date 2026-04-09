@@ -22,6 +22,7 @@ from pathlib import Path
 # Third-party
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -511,6 +512,7 @@ ds_obs
 # and don't treat it properly, the corresponding time steps will be removed
 # from the evaluation. This can lead to a bias in the evaluation.
 
+
 # %%
 def analyze_missing_data(ds_obs):
     """
@@ -588,6 +590,7 @@ assert ds_ml.sizes["start_time"] == ds_nwp.sizes["start_time"]
 # surface level data, this is a reasonable approach. However, if you are
 # working with data at different levels, you may want to consider a more
 # sophisticated interpolation method.
+
 
 # %%
 def interpolate_to_obs(
@@ -695,7 +698,7 @@ ds_ml_interp, ds_nwp_interp = interpolate_to_obs(
 #         n_workers=4,
 #         threads_per_worker=32,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -866,16 +869,26 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
         _cmap = get_colormap_for_variable(var)
         if var == "wind_speed":
             vmin = 0.0
-        scatter_kw = dict(
-            cmap=_cmap, vmin=vmin, vmax=vmax, transform=ccrs.PlateCarree()
+
+        # Use log scale for precipitation (avoid zero/negative in LogNorm)
+        var_norm = None
+        if "precipitation" in var.lower() or "tot_prec" in var.lower():
+            log_vmin = max(vmin, 0.01)
+            log_vmax = max(vmax, log_vmin * 10)
+            var_norm = mcolors.LogNorm(vmin=log_vmin, vmax=log_vmax)
+
+        norm_kw = (
+            {"norm": var_norm}
+            if var_norm is not None
+            else {"vmin": vmin, "vmax": vmax}
         )
+        scatter_kw = dict(cmap=_cmap, transform=ccrs.PlateCarree(), **norm_kw)
         mesh_kw = dict(
             cmap=_cmap,
-            vmin=vmin,
-            vmax=vmax,
             transform=ccrs.PlateCarree(),
             shading="auto",
             rasterized=True,
+            **norm_kw,
         )
 
         def _add_pressure_contour(ax, ds_slice):
@@ -962,12 +975,12 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
             im2,
             cax=cbar_ax,
             orientation="horizontal",
-            label=f"{VARIABLE_UNITS.get(var, var)}",
+            label=f"({VARIABLE_UNITS.get(var, var)})",
         )
 
         plt.suptitle(
-            f"{var} Comparison at {str(plot_time.dt.date.values)}"  # noqa: E501
-            f" - {str(plot_time.dt.hour.values)} UTC",
+            f"{var} Comparison at {plot_time.dt.date.values!s}"
+            f" - {plot_time.dt.hour.values!s} UTC",
             y=0.95,
         )
 
@@ -990,6 +1003,7 @@ plot_comparison_maps(
 # station-level data points.
 # These datapoints are visualised on a map to show the spatial distribution
 # of the stations.
+
 
 # %%
 # Visualization of the interpolated model data
@@ -1040,6 +1054,19 @@ def plot_comparison_interpolated(
     vmin = min(np.nanmin(arr) for arr in arrays_for_minmax)
     vmax = max(np.nanmax(arr) for arr in arrays_for_minmax)
 
+    # Use log scale for precipitation (avoid zero/negative in LogNorm)
+    var_norm = None
+    if "precipitation" in var_plot.lower() or "tot_prec" in var_plot.lower():
+        log_vmin = max(vmin, 0.01)
+        log_vmax = max(vmax, log_vmin * 10)
+        var_norm = mcolors.LogNorm(vmin=log_vmin, vmax=log_vmax)
+
+    norm_kw = (
+        {"norm": var_norm}
+        if var_norm is not None
+        else {"vmin": vmin, "vmax": vmax}
+    )
+
     for step_idx, step in enumerate(ds_nwp_interp.elapsed_forecast_duration):
         forecast_time = ds_nwp_interp.forecast_time.sel(
             start_time=plot_time, elapsed_forecast_duration=step
@@ -1061,9 +1088,8 @@ def plot_comparison_interpolated(
                     c=data[var_plot].sel(time=forecast_time),
                     cmap=_cmap,
                     transform=ccrs.PlateCarree(),
-                    vmin=vmin,
-                    vmax=vmax,
                     rasterized=True,
+                    **norm_kw,
                 )
             else:
                 scatter = ax.scatter(
@@ -1074,9 +1100,8 @@ def plot_comparison_interpolated(
                     ),
                     cmap=_cmap,
                     transform=ccrs.PlateCarree(),
-                    vmin=vmin,
-                    vmax=vmax,
                     rasterized=True,
+                    **norm_kw,
                 )
 
             ax.add_feature(cfeature.COASTLINE, edgecolor="grey")
@@ -1110,13 +1135,13 @@ def plot_comparison_interpolated(
         scatter,
         cax=cbar_ax,
         orientation="horizontal",
-        label=VARIABLE_UNITS[var_plot],
+        label=f"({VARIABLE_UNITS[var_plot]})",
     )
 
     # Adjusted suptitle position
     plt.suptitle(
-        f"{var_plot} Comparison at {str(plot_time.dt.date.values)}"  # noqa: E501
-        f" - {str(plot_time.dt.hour.values)} UTC",
+        f"{var_plot} Comparison at {plot_time.dt.date.values!s}"
+        f" - {plot_time.dt.hour.values!s} UTC",
         y=0.95,  # Higher position
     )
     return fig
@@ -1316,6 +1341,7 @@ apply_style()
 # **Normalization Needs:** Differences in scale between variables suggest
 # that normalization may be necessary for accurate comparisons.
 
+
 # %%
 def plot_interpolated_histograms(ds_obs, ds_ml_interp, ds_nwp_interp):
     """Plot histograms for interpolated station data comparing obs, NWP and ML.
@@ -1377,7 +1403,7 @@ def plot_interpolated_histograms(ds_obs, ds_ml_interp, ds_nwp_interp):
         ax.set_title(
             f"Distribution of {variable_name} at Station Locations", pad=20
         )
-        ax.set_xlabel(f"{units}")
+        ax.set_xlabel(f"({units})")
 
         # Place legend in top left
         ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98))

@@ -389,7 +389,7 @@ for base_var, unit in VARIABLE_UNITS.items():
 # Then create the level-specific entries
 for level in REQUIRED_LEVELS:
     for base_var, unit in base_level_vars.items():
-        VARIABLE_UNITS[f"{base_var[:-len('_level')]}_{level}hPa"] = unit
+        VARIABLE_UNITS[f"{base_var[: -len('_level')]}_{level}hPa"] = unit
 print(f"All units: {VARIABLE_UNITS}")
 
 
@@ -554,12 +554,18 @@ ds_gt = ds_gt[
     ]
 ]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth")
 ds_ml = filter_forecast_dataset_by_time_coverage(ds_ml, ds_gt, label="ML")
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth aligned")
 ds_gt
@@ -627,7 +633,10 @@ ds_ml, ds_nwp = align_on_common_coord(
     right_label="NWP",
 )
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(
     ds_gt, time_subset, label="ground-truth synchronized"
@@ -693,7 +702,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -787,7 +796,7 @@ for variable_name in VARIABLES_GROUND_TRUTH.values():
     ax.set_title(
         f"Distribution of {variable_name}", pad=20
     )  # Add padding below title
-    ax.set_xlabel(f"{units}")  # Add units to x-axis label
+    ax.set_xlabel(f"({units})")
 
     # Place legend in top left with some padding from the edge
     ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98))

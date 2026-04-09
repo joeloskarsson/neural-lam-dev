@@ -68,13 +68,13 @@ PATH_NWP = (
 )
 # This path should point to the ML forecast data in zarr format
 # (e.g. produced by neural-lam in `eval` mode)
-PATH_ML = (  # noqa: E501
+PATH_ML = (
     "/capstor/store/cscs/swissai/a122/sadamov/lam_model_forecasts"
     "/preds_7_19_margin_interior_lr_0001_ar_12.zarr"
 )
 # This path should point to the boundary data in zarr format
 # (default is MDP-datastore)
-PATH_BOUNDARY = (  # noqa: E501
+PATH_BOUNDARY = (
     "/capstor/store/cscs/swissai/a122/sadamov"
     "/ifs_7_19_margin_interior.datastore.zarr"
 )
@@ -551,10 +551,12 @@ ds_gt = ds_gt[
     ]
 ]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = ds_gt.sel(time=np.unique(time_subset))
-ds_gt
 
 
 # %%
@@ -743,7 +745,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -1134,7 +1136,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
                     markevery=3,
                 )
 
-            ax.set_xlabel("Lead Time (h)")
+            ax.set_xlabel("Lead Time (hours)")
             ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
             ax.set_ylabel(f"{metric} ({VARIABLE_UNITS[variable]})")
             ax.set_title(f"{metric} Evolution for {variable}")
@@ -1150,7 +1152,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
             plt.close()
 
         except (KeyError, ValueError) as e:
-            print(f"Skipping {metric} for {variable}: {str(e)}")
+            print(f"Skipping {metric} for {variable}: {e!s}")
             continue
 
 
@@ -1195,7 +1197,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
 
 # %%
 # Set display options for all float values
-pd.set_option("display.float_format", lambda x: "{:.4f}".format(x))
+pd.set_option("display.float_format", lambda x: f"{x:.4f}")
 
 
 # %%
@@ -1323,7 +1325,7 @@ def calculate_meteoswiss_metrics(ds_gt, ds_ml, ds_nwp):
                             ].append(ets_nwp)
 
                 except Exception as e:
-                    print(f"Error processing {var_name}: {str(e)}")
+                    print(f"Error processing {var_name}: {e!s}")
                     continue
 
             # Save checkpoint after each completed lead time
@@ -1338,7 +1340,7 @@ def calculate_meteoswiss_metrics(ds_gt, ds_ml, ds_nwp):
                 )
 
         except Exception as e:
-            print(f"Error processing lead time {efd}: {str(e)}")
+            print(f"Error processing lead time {efd}: {e!s}")
             continue
 
     return metrics_by_var
@@ -1395,7 +1397,7 @@ def plot_metrics_evolution(
                     markevery=3,
                 )
 
-        ax.set_xlabel("Lead Time (h)")
+        ax.set_xlabel("Lead Time (hours)")
         ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
         ax.set_ylabel(metric_name)
         ax.set_title(f"{metric_name} Evolution for {var_name}")
@@ -1411,7 +1413,7 @@ def plot_metrics_evolution(
         plt.close()
 
     except Exception as e:
-        print(f"Error plotting {var_name} - {metric_name}: {str(e)}")
+        print(f"Error plotting {var_name} - {metric_name}: {e!s}")
         plt.close("all")
 
 
@@ -1491,13 +1493,14 @@ try:
             )
 
 except Exception as e:
-    print(f"Error in main execution: {str(e)}")
+    print(f"Error in main execution: {e!s}")
 
 
 # %% [markdown]
 # The wind vector RMSE takes into account the magnitude and direction of
 # the wind, providing a more comprehensive measure of error than scalar
 # metrics.
+
 
 # %%
 def wind_vector_rmse(u_pred, v_pred, u_true, v_true):
@@ -1521,7 +1524,6 @@ forecast_hours = [
 ]
 
 if "wind_u_10m" in ds_gt and "wind_v_10m" in ds_gt:
-
     # Persistence
     u_per = ds_gt["wind_u_10m"].sel(time=ds_ml_sampled.start_time)
     v_per = ds_gt["wind_v_10m"].sel(time=ds_ml_sampled.start_time)
@@ -1607,7 +1609,7 @@ if "wind_u_10m" in ds_gt and "wind_v_10m" in ds_gt:
             markevery=3,
         )
 
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
     ax.set_ylabel("Wind Vector RMSE (m/s)")
     ax.set_title("Wind Vector RMSE Evolution")
@@ -1737,7 +1739,7 @@ if "precipitation" in ds_gt and "precipitation" in ds_ml_sampled:
         )
 
     sal_df = pd.DataFrame(sal_results, index=sal_hours)
-    sal_df.index.name = "Lead Time (h)"
+    sal_df.index.name = "Lead Time (hours)"
     export_table(
         sal_df, "sal_precipitation", caption="SAL scores for precipitation"
     )
@@ -1770,7 +1772,7 @@ if "precipitation" in ds_gt and "precipitation" in ds_ml_sampled:
                 marker=LINE_STYLES["nwp"][1],
             )
     ax.axhline(0, color="black", linewidth=0.8, linestyle="--")
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.set_ylabel("SAL Score")
     ax.set_title("SAL Scores for Precipitation (tp01)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(24))

@@ -465,6 +465,7 @@ ds_obs
 # and don't treat it properly, the corresponding time steps will be removed
 # from the evaluation. This can lead to a bias in the evaluation.
 
+
 # %%
 def analyze_missing_data(ds_obs):
     """
@@ -542,6 +543,7 @@ assert ds_ml.sizes["start_time"] == ds_nwp.sizes["start_time"]
 # surface level data, this is a reasonable approach. However, if you are
 # working with data at different levels, you may want to consider a more
 # sophisticated interpolation method.
+
 
 # %%
 def interpolate_to_obs(
@@ -649,7 +651,7 @@ ds_ml_interp, ds_nwp_interp = interpolate_to_obs(
 #         n_workers=4,
 #         threads_per_worker=32,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -697,6 +699,7 @@ with ProgressBar():
 # **Holistic Assessment:** The combination of metrics provides a comprehensive
 # performance profile, essential for model validation and comparison. More
 # complex metrics are explained in more detail.
+
 
 # %%
 def calculate_metrics_by_efd(
@@ -931,7 +934,7 @@ for variable in VARIABLES_ML.values():
                     marker=LINE_STYLES["nwp"][1],
                 )
 
-            ax.set_xlabel("Lead Time (h)")
+            ax.set_xlabel("Lead Time (hours)")
             ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
             ax.set_ylabel(f"{metric} ({VARIABLE_UNITS[variable]})")
             ax.set_title(f"{metric} Evolution for {variable}")
@@ -948,7 +951,7 @@ for variable in VARIABLES_ML.values():
             plt.close()
 
         except (KeyError, ValueError) as e:
-            print(f"Skipping {metric} for {variable}: {str(e)}")
+            print(f"Skipping {metric} for {variable}: {e!s}")
             continue
 
 
@@ -990,6 +993,7 @@ for variable in VARIABLES_ML.values():
 # - Easy to interpret: 1 indicates no bias, while values above or below 1
 #   show the direction and magnitude of the bias
 
+
 # %%
 def calculate_meteoswiss_metrics(ds_obs, ds_ml, ds_nwp=None):
     """Calculate MeteoSwiss verification metrics (FBI and ETS) for station
@@ -1027,7 +1031,7 @@ def calculate_meteoswiss_metrics(ds_obs, ds_ml, ds_nwp=None):
     for efd in ds_ml.elapsed_forecast_duration.values:
         try:
             print(
-                f"\nCalculating metrics for lead time:"  # noqa: E501
+                f"\nCalculating metrics for lead time:"
                 f" {efd / np.timedelta64(1, 'h'):.1f}h"
             )
 
@@ -1108,11 +1112,11 @@ def calculate_meteoswiss_metrics(ds_obs, ds_ml, ds_nwp=None):
                             ].append(ets_nwp)
 
                 except Exception as e:
-                    print(f"Error processing {var_name}: {str(e)}")
+                    print(f"Error processing {var_name}: {e!s}")
                     continue
 
         except Exception as e:
-            print(f"Error processing lead time {efd}: {str(e)}")
+            print(f"Error processing lead time {efd}: {e!s}")
             continue
 
     return metrics_by_var
@@ -1162,7 +1166,7 @@ def plot_meteoswiss_metrics_evolution(metrics_by_var, var_name, metric_prefix):
                 markevery=3,
             )
 
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
     ax.set_ylabel(f"{metric_prefix}")
     ax.set_title(f"{metric_prefix} for {var_name}")
@@ -1241,6 +1245,7 @@ if "wind_v_10m" in ds_obs:
 # The wind vector RMSE takes into account the magnitude and direction of
 # the wind, providing a more comprehensive measure of error than scalar
 # metrics.
+
 
 # %%
 def wind_vector_rmse(u_pred, v_pred, u_true, v_true):
@@ -1372,7 +1377,7 @@ def plot_wind_vector_rmse(time_series_df):
             label="NWP",
         )
 
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
     ax.set_ylabel("RMSE (m/s)")
     ax.set_title("Wind Vector RMSE Evolution")

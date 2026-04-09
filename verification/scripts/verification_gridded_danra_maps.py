@@ -424,7 +424,7 @@ for base_var, unit in VARIABLE_UNITS.items():
 # Then create the level-specific entries
 for level in REQUIRED_LEVELS:
     for base_var, unit in base_level_vars.items():
-        VARIABLE_UNITS[f"{base_var[:-len('_level')]}_{level}hPa"] = unit
+        VARIABLE_UNITS[f"{base_var[: -len('_level')]}_{level}hPa"] = unit
 print(f"All units: {VARIABLE_UNITS}")
 
 
@@ -594,12 +594,18 @@ ds_gt = ds_gt[
     ]
 ]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth")
 ds_ml = filter_forecast_dataset_by_time_coverage(ds_ml, ds_gt, label="ML")
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth aligned")
 ds_gt
@@ -667,7 +673,10 @@ ds_ml, ds_nwp = align_on_common_coord(
     right_label="NWP",
 )
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(
     ds_gt, time_subset, label="ground-truth synchronized"
@@ -733,7 +742,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -1144,8 +1153,8 @@ def create_comparison_maps(
             hspace=0.050,
             wspace=0.05,
         )
-        title = (  # noqa: E501
-            f"{var} starting at {str(time_selected.dt.date.values)}"  # noqa: E501
+        title = (
+            f"{var} starting at {time_selected.dt.date.values!s}"
             f" - {time_selected.dt.hour.values:02d} UTC"
         )
         plt.suptitle(title, y=0.98)
@@ -1257,7 +1266,7 @@ def add_map_features(axes):
 def add_colorbar(fig, im, var):
     cbar_ax = fig.add_axes([0.2, 0.0, 0.6, 0.02])
     cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label(VARIABLE_UNITS[var])
+    cbar.set_label(f"({VARIABLE_UNITS[var]})")
 
 
 # %%
@@ -1293,6 +1302,7 @@ create_comparison_maps(
 
 # %% [markdown]
 # #### Mean Error Plot Across All Start_Times
+
 
 # %%
 def create_error_maps(ds_gt, ds_ml, ds_nwp=None, var=None):
@@ -1430,7 +1440,7 @@ def plot_error_field(ax, lons, lats, data, vmin, vmax):
 def add_error_colorbar(fig, im, var):
     cbar_ax = fig.add_axes([0.2, 0.0, 0.6, 0.02])
     cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label(f"Error in {VARIABLE_UNITS[var]}")
+    cbar.set_label(f"Error ({VARIABLE_UNITS[var]})")
 
 
 # %%

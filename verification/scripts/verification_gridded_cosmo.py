@@ -823,7 +823,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -1038,7 +1038,7 @@ def add_map_features(axes):
 def add_colorbar(fig, im, var):
     cbar_ax = fig.add_axes([0.2, 0.0, 0.6, 0.02])
     cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label(VARIABLE_UNITS[var])
+    cbar.set_label(f"({VARIABLE_UNITS[var]})")
 
 
 # %%
@@ -1300,8 +1300,8 @@ def create_comparison_maps(
             hspace=0.14,
             wspace=0.05,
         )
-        title = (  # noqa: E501
-            f"{var} starting at {str(time_selected.dt.date.values)}"  # noqa: E501
+        title = (
+            f"{var} starting at {time_selected.dt.date.values!s}"
             f" - {time_selected.dt.hour.values:02d} UTC"
         )
         plt.suptitle(title, y=0.98)
@@ -1377,7 +1377,7 @@ def create_wind_speed_maps(
     u_var, v_var = "wind_u_10m", "wind_v_10m"
     if u_var not in ds_ml or v_var not in ds_ml:
         print(
-            "Wind components not found in ML dataset"  # noqa: E501
+            "Wind components not found in ML dataset"
             " — skipping wind speed maps."
         )
         return
@@ -1504,8 +1504,8 @@ def create_wind_speed_maps(
     cbar = fig.colorbar(im0, cax=cbar_ax, orientation="horizontal")
     cbar.set_label("Wind Speed (m/s)")
 
-    title = (  # noqa: E501
-        f"Wind Speed (10 m) starting at {str(time_selected.dt.date.values)}"  # noqa: E501
+    title = (
+        f"Wind Speed (10 m) starting at {time_selected.dt.date.values!s}"
         f" - {time_selected.dt.hour.values:02d} UTC"
     )
     plt.suptitle(title, y=0.98)
@@ -1919,7 +1919,7 @@ for variable_name in VARIABLES_GROUND_TRUTH.values():
     ax.set_title(
         f"Distribution of {variable_name}", pad=20
     )  # Add padding below title
-    ax.set_xlabel(f"{units}")  # Add units to x-axis label
+    ax.set_xlabel(f"({units})")
 
     # Place legend in top left with some padding from the edge
     ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98))
@@ -2046,6 +2046,7 @@ def calculate_energy_spectra(data, dx_m=None):
     effective_resolution : float
         The effective resolution of the model in m⁻¹.
     """
+
     # Get grid spacing and convert to metres regardless of coordinate units.
     # Heuristic:
     #   |dx| < 1      → rotated/geographic degrees (e.g. COSMO RotatedPole)
@@ -2304,7 +2305,7 @@ def plot_energy_spectra(spectra_cache, var, level=None, show_legend=False):
     # Customize plot
     ax.set_xlabel("Wavelength (km)")
     unit = VARIABLE_UNITS.get(var, "")
-    ax.set_ylabel(f"Energy Density (({unit})² * m)")
+    ax.set_ylabel(f"Energy Density ({unit}^2 m)")
     title = f"Energy Spectra Comparison for {var}"
     if level is not None:
         title += f" at Level {level} hPa"
@@ -2486,7 +2487,7 @@ def plot_wavenumber_evolution(
                     },
                     index=hours,
                 ).rename_axis(
-                    index="Lead Time (h)",
+                    index="Lead Time (hours)",
                     columns=f"Energy Density (k={target_k:.2e})",
                 ),
                 f"wavenumber_evolution_{var}_k{target_k:.2e}",
@@ -2516,7 +2517,7 @@ def plot_wavenumber_evolution(
             axes[idx].set_title(f"{scale_lbl}\n\u03bb = {wl_km:.0f} km")
             axes[idx].xaxis.set_major_locator(mticker.MultipleLocator(24))
             if idx == len(target_ks) // 2:  # Only middle plot gets x-label
-                axes[idx].set_xlabel("Lead Time (h)")
+                axes[idx].set_xlabel("Lead Time (hours)")
             if idx == 0:
                 axes[idx].set_ylabel("Energy Density")
                 axes[idx].legend()

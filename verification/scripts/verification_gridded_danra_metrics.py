@@ -366,8 +366,7 @@ def _parse_runtime_args():
         type=float,
         default=None,
         help=(
-            "Fraction of each supported dimension to keep in debug mode"
-            " (0, 1]."
+            "Fraction of each supported dimension to keep in debug mode (0, 1]."
         ),
     )
     parser.add_argument(
@@ -444,7 +443,7 @@ def subset_dataset_for_debug(ds, label, dims_to_trim):
 
     if not indexers:
         print(
-            f"Debug mode active for {label}, but no matching"  # noqa: E501
+            f"Debug mode active for {label}, but no matching"
             " dimensions were reduced."
         )
         return ds
@@ -463,12 +462,12 @@ def select_valid_positions(ds, dim, positions, label):
     ]
     if not valid_positions:
         raise ValueError(
-            f"No valid positions left for {label} on dimension"  # noqa: E501
+            f"No valid positions left for {label} on dimension"
             f" '{dim}' with size {ds.sizes[dim]}."
         )
     if len(valid_positions) != len(positions):
         print(
-            f"Adjusted {label} {dim} selection from {len(positions)}"  # noqa: E501
+            f"Adjusted {label} {dim} selection from {len(positions)}"
             f" to {len(valid_positions)} positions."
         )
     return ds.isel({dim: valid_positions})
@@ -499,7 +498,7 @@ def filter_ml_start_times_with_gt(ds_ml, ds_gt, label):
         )
     if not valid_mask.all():
         print(
-            f"Adjusted {label} start_time selection from"  # noqa: E501
+            f"Adjusted {label} start_time selection from"
             f" {len(valid_mask)} to {int(valid_mask.sum())} with complete"
             " ground-truth coverage."
         )
@@ -513,14 +512,14 @@ def align_on_common_start_times(ds_left, ds_right, left_label, right_label):
     )
     if common_start_times.empty:
         raise ValueError(
-            f"No overlapping start times found between"  # noqa: E501
+            f"No overlapping start times found between"
             f" {left_label} and {right_label}."
         )
     if len(common_start_times) != len(ds_left.start_time) or len(
         common_start_times
     ) != len(ds_right.start_time):
         print(
-            f"Aligned {left_label} and {right_label} to"  # noqa: E501
+            f"Aligned {left_label} and {right_label} to"
             f" {len(common_start_times)} common start times."
         )
     common_values = common_start_times.values
@@ -593,7 +592,7 @@ for base_var, unit in VARIABLE_UNITS.items():
 # Then create the level-specific entries
 for level in REQUIRED_LEVELS:
     for base_var, unit in base_level_vars.items():
-        VARIABLE_UNITS[f"{base_var[:-len('_level')]}_{level}hPa"] = unit
+        VARIABLE_UNITS[f"{base_var[: -len('_level')]}_{level}hPa"] = unit
 print(f"All units: {VARIABLE_UNITS}")
 
 
@@ -757,12 +756,18 @@ ds_gt = ds_gt[
     ]
 ]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth")
 ds_ml = filter_ml_start_times_with_gt(ds_ml, ds_gt, label="ML")
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth aligned")
 ds_gt
@@ -826,7 +831,10 @@ ds_ml, ds_nwp = align_on_common_start_times(
     right_label="NWP",
 )
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(
     ds_gt, time_subset, label="ground-truth synchronized"
@@ -890,7 +898,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -1261,7 +1269,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
             if per_scores and not all(pd.isna(per_scores)):
                 hours_per = [
                     x / np.timedelta64(1, "h")
-                    for x in ds_ml.elapsed_forecast_duration.values  # noqa: E501
+                    for x in ds_ml.elapsed_forecast_duration.values
                     # From ml data
                 ]
 
@@ -1274,7 +1282,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
                     marker=LINE_STYLES["per"][1],
                 )
 
-            ax.set_xlabel("Lead Time (h)")
+            ax.set_xlabel("Lead Time (hours)")
             ax.xaxis.set_major_locator(mticker.MultipleLocator(6))
             ax.set_ylabel(f"{metric} ({VARIABLE_UNITS[variable]})")
             ax.set_title(f"{metric} Evolution for {variable}")
@@ -1290,7 +1298,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
             plt.close()
 
         except (KeyError, ValueError) as e:
-            print(f"Skipping {metric} for {variable}: {str(e)}")
+            print(f"Skipping {metric} for {variable}: {e!s}")
             continue
 
 
@@ -1334,7 +1342,7 @@ for i, variable in enumerate(VARIABLES_GROUND_TRUTH.values()):
 
 # %%
 # Set display options for all float values
-pd.set_option("display.float_format", lambda x: "{:.4f}".format(x))
+pd.set_option("display.float_format", lambda x: f"{x:.4f}")
 
 
 # %%
@@ -1373,7 +1381,7 @@ def calculate_meteoswiss_metrics(ds_gt, ds_ml, ds_nwp):
     for efd in ds_ml.elapsed_forecast_duration.values:
         try:
             print(
-                f"\nCalculating metrics for lead time:"  # noqa: E501
+                f"\nCalculating metrics for lead time:"
                 f" {efd / np.timedelta64(1, 'h'):.1f}h"
             )
 
@@ -1439,11 +1447,11 @@ def calculate_meteoswiss_metrics(ds_gt, ds_ml, ds_nwp):
                             ].append(ets_nwp)
 
                 except Exception as e:
-                    print(f"Error processing {var_name}: {str(e)}")
+                    print(f"Error processing {var_name}: {e!s}")
                     continue
 
         except Exception as e:
-            print(f"Error processing lead time {efd}: {str(e)}")
+            print(f"Error processing lead time {efd}: {e!s}")
             continue
 
     return metrics_by_var
@@ -1498,7 +1506,7 @@ def plot_metrics_evolution(
                     label=f"NWP {threshold}" if var_index == 0 else "",
                 )
 
-        ax.set_xlabel("Lead Time (h)")
+        ax.set_xlabel("Lead Time (hours)")
         ax.xaxis.set_major_locator(mticker.MultipleLocator(6))
         ax.set_ylabel(metric_name)
         ax.set_title(f"{metric_name} Evolution for {var_name}")
@@ -1514,7 +1522,7 @@ def plot_metrics_evolution(
         plt.close()
 
     except Exception as e:
-        print(f"Error plotting {var_name} - {metric_name}: {str(e)}")
+        print(f"Error plotting {var_name} - {metric_name}: {e!s}")
         plt.close("all")
 
 
@@ -1602,13 +1610,14 @@ try:
             )
 
 except Exception as e:
-    print(f"Error in main execution: {str(e)}")
+    print(f"Error in main execution: {e!s}")
 
 
 # %% [markdown]
 # The wind vector RMSE takes into account the magnitude and direction of
 # the wind, providing a more comprehensive measure of error than scalar
 # metrics.
+
 
 # %%
 def wind_vector_rmse(u_pred, v_pred, u_true, v_true):
@@ -1632,7 +1641,6 @@ forecast_hours = [
 ]
 
 if "wind_u_10m" in ds_gt and "wind_v_10m" in ds_gt:
-
     # Persistence
     u_per = ds_gt["wind_u_10m"].sel(time=ds_ml_sampled.start_time)
     v_per = ds_gt["wind_v_10m"].sel(time=ds_ml_sampled.start_time)
@@ -1719,7 +1727,7 @@ if "wind_u_10m" in ds_gt and "wind_v_10m" in ds_gt:
             color=COLORS["nwp"],
         )
 
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(6))
     ax.set_ylabel("Wind Vector RMSE (m/s)")
     ax.set_title("Wind Vector RMSE Evolution")

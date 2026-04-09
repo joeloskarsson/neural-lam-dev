@@ -411,7 +411,7 @@ for base_var, unit in VARIABLE_UNITS.items():
 # Then create the level-specific entries
 for level in REQUIRED_LEVELS:
     for base_var, unit in base_level_vars.items():
-        VARIABLE_UNITS[f"{base_var[:-len('_level')]}_{level}hPa"] = unit
+        VARIABLE_UNITS[f"{base_var[: -len('_level')]}_{level}hPa"] = unit
 print(f"All units: {VARIABLE_UNITS}")
 
 
@@ -576,12 +576,18 @@ ds_gt = ds_gt[
     ]
 ]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth")
 ds_ml = filter_forecast_dataset_by_time_coverage(ds_ml, ds_gt, label="ML")
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(ds_gt, time_subset, label="ground-truth aligned")
 ds_gt
@@ -649,7 +655,10 @@ ds_ml, ds_nwp = align_on_common_coord(
     right_label="NWP",
 )
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = select_available_times(
     ds_gt, time_subset, label="ground-truth synchronized"
@@ -715,7 +724,7 @@ sampled_start_time_indices = np.sort(
 #         n_workers=4,
 #         threads_per_worker=16,
 #         memory_limit="96GB",
-#         local_directory="/iopsstor/scratch/cscs/sadamov",  # noqa: E501
+#         local_directory="/iopsstor/scratch/cscs/sadamov",
 #         # Use fast local storage for spilling
 #         dashboard_address=None,
 #     ) as cluster
@@ -771,6 +780,7 @@ if PRECOMPUTE_DATA:
 # - 1 < LSD < 2: Moderate differences
 # - LSD > 2: Significant differences
 
+
 # %%
 def calculate_energy_spectra(data, dx_m=None):
     """Calculate the energy spectra of the given data using 2D FFT.
@@ -791,6 +801,7 @@ def calculate_energy_spectra(data, dx_m=None):
     effective_resolution : float
         The effective resolution of the model in m⁻¹.
     """
+
     # Get grid spacing and convert to metres regardless of coordinate units.
     # Heuristic:
     #   |dx| < 1      → rotated/geographic degrees (e.g. COSMO RotatedPole)
@@ -1050,7 +1061,7 @@ def plot_energy_spectra(spectra_cache, var, level=None, show_legend=False):
     # Customize plot
     ax.set_xlabel("Wavelength (km)")
     unit = VARIABLE_UNITS.get(var, "")
-    ax.set_ylabel(f"Energy Density (({unit})² * m)")
+    ax.set_ylabel(f"Energy Density ({unit}^2 m)")
     title = f"Energy Spectra Comparison for {var}"
     if level is not None:
         title += f" at Level {level} hPa"
@@ -1113,9 +1124,11 @@ def display_lsd_table(spectra_cache, variables, name, caption=""):
     styled_df = df.style.format(
         lambda x: f"{x:.3f}" if pd.notnull(x) else "-"
     ).map(
-        lambda x: f"color: {'green' if x < 1 else 'orange' if x < 2 else 'red'}"
-        if pd.notnull(x)
-        else ""
+        lambda x: (
+            f"color: {'green' if x < 1 else 'orange' if x < 2 else 'red'}"
+            if pd.notnull(x)
+            else ""
+        )
     )
     if display is not None:
         display(styled_df)
@@ -1237,7 +1250,7 @@ def plot_wavenumber_evolution(
                     },
                     index=hours,
                 ).rename_axis(
-                    index="Lead Time (h)",
+                    index="Lead Time (hours)",
                     columns=f"Energy Density (k={target_k:.2e})",
                 ),
                 f"wavenumber_evolution_{var}_k{target_k:.2e}",
@@ -1268,7 +1281,7 @@ def plot_wavenumber_evolution(
             axes[idx].set_title(f"{scale_lbl}\n\u03bb = {wl_km:.0f} km")
             axes[idx].xaxis.set_major_locator(mticker.MultipleLocator(6))
             if idx == len(target_ks) // 2:  # Only middle plot gets x-label
-                axes[idx].set_xlabel("Lead Time (h)")
+                axes[idx].set_xlabel("Lead Time (hours)")
             if idx == 0:
                 axes[idx].set_ylabel("Energy Density")
                 axes[idx].legend()

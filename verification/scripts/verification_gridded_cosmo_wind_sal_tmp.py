@@ -18,7 +18,7 @@ from debug_utils import (
     parse_debug_runtime_args,
     subset_dataset_for_debug,
 )
-from plot_styles import DPI, SCALE_METRICS, apply_style  # noqa: F401
+from plot_styles import DPI, SCALE_METRICS, apply_style
 from pysteps.verification.salscores import sal
 
 # ── Config (keep in sync with main script) ───────────────────────────────────
@@ -188,7 +188,10 @@ ds_gt = ds_gt.drop_vars(
 ds_gt = ds_gt.transpose("time", "x", "y")
 ds_gt = ds_gt[["time", "x", "y", *VARIABLES_GROUND_TRUTH.values()]]
 time_subset = np.concatenate(
-    (ds_ml.forecast_time.values.flatten(), ds_ml.start_time.values.flatten())
+    (
+        ds_ml.forecast_time.values.flatten(),
+        ds_ml.start_time.values.flatten(),
+    )
 )
 ds_gt = ds_gt.sel(time=np.unique(time_subset))
 
@@ -349,7 +352,7 @@ if "precipitation" in ds_gt and "precipitation" in ds_ml_sampled:
         )
 
     sal_df = pd.DataFrame(sal_results, index=sal_hours)
-    sal_df.index.name = "Lead Time (h)"
+    sal_df.index.name = "Lead Time (hours)"
     export_table(
         sal_df, "sal_precipitation", caption="SAL scores for precipitation"
     )
@@ -381,7 +384,7 @@ if "precipitation" in ds_gt and "precipitation" in ds_ml_sampled:
                 marker=LINE_STYLES["nwp"][1],
             )
     ax.axhline(0, color="black", linewidth=0.8, linestyle="--")
-    ax.set_xlabel("Lead Time (h)")
+    ax.set_xlabel("Lead Time (hours)")
     ax.set_ylabel("SAL Score")
     ax.set_title("SAL Scores for Precipitation (tp01)")
     ax.xaxis.set_major_locator(mticker.MultipleLocator(24))
