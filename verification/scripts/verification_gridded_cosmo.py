@@ -1079,7 +1079,7 @@ def create_comparison_maps(
         # Create figure with n_elapsed_forecast_durations rows and
         # n_cols columns
         fig = plt.figure(
-            figsize=(9 * n_cols, 6 * n_elapsed_forecast_durations), dpi=DPI
+            figsize=(7.5 * n_cols, 6 * n_elapsed_forecast_durations), dpi=DPI
         )
         axes = np.array(
             [
@@ -1297,8 +1297,8 @@ def create_comparison_maps(
         plt.subplots_adjust(
             top=0.92,
             bottom=0.05,
-            hspace=0.14,
-            wspace=0.05,
+            hspace=0.005,
+            wspace=0.03,
         )
         title = (
             f"{var} starting at {time_selected.dt.date.values!s}"
@@ -1330,7 +1330,7 @@ else:
         label="plot",
         allow_nearest=DEBUG_MODE,
     )
-apply_style(SCALE_MAPS_COSMO)
+apply_style(SCALE_MAPS_COSMO * 1.05)
 create_comparison_maps(
     ds_gt=ds_gt,
     ds_ml=ds_ml.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT),
@@ -1509,7 +1509,7 @@ def create_wind_speed_maps(
         f" - {time_selected.dt.hour.values:02d} UTC"
     )
     plt.suptitle(title, y=0.98)
-    plt.subplots_adjust(top=0.92, bottom=0.05, hspace=0.14, wspace=0.05)
+    plt.subplots_adjust(top=0.92, bottom=0.05, hspace=0.105, wspace=0.03)
     plt.show()
     save_plot(fig, "map_wind_speed_10m_multi_efd", time_selected, dpi=DPI)
     plt.close()
@@ -1542,7 +1542,7 @@ def create_error_maps(ds_gt, ds_ml, ds_nwp=None, var=None, name_prefix=""):
         n_cols = 2 if (ds_nwp is not None and var in ds_nwp) else 1
 
         fig = plt.figure(
-            figsize=(7.5 * n_cols, 3 * n_elapsed_forecast_durations), dpi=DPI
+            figsize=(7.5 * n_cols, 6 * n_elapsed_forecast_durations), dpi=DPI
         )
 
         axes = np.array(
@@ -1638,12 +1638,12 @@ def create_error_maps(ds_gt, ds_ml, ds_nwp=None, var=None, name_prefix=""):
         plt.subplots_adjust(
             top=0.9,
             bottom=0.05,
-            hspace=0.018,
-            wspace=0.05,
+            hspace=0.005,
+            wspace=0.03,
         )
 
         title = f"Mean Error in {var}"
-        plt.suptitle(title, y=0.98)
+        plt.suptitle(title, y=0.95)
 
         plt.show()
         save_plot(fig, f"{name_prefix}mean_errormap_{var}_multi_efd")
@@ -1665,7 +1665,7 @@ def plot_error_field(ax, lons, lats, data, vmin, vmax):
 
 
 def add_error_colorbar(fig, im, var):
-    cbar_ax = fig.add_axes([0.2, 0.0, 0.6, 0.02])
+    cbar_ax = fig.add_axes([0.15, 0.0, 0.7, 0.02])
     cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
     cbar.set_label(f"Mean Error ({VARIABLE_UNITS[var]})")
 
@@ -1684,7 +1684,7 @@ else:
     time_selected = resolve_requested_time(
         ds_ml, "start_time", PLOT_TIME, label="plot time"
     )
-apply_style()  # restore base for error maps
+apply_style(SCALE_MAPS_COSMO * 1.5)  # restore base for error maps
 create_error_maps(
     ds_gt=ds_gt,
     ds_ml=ds_ml_sampled.isel(

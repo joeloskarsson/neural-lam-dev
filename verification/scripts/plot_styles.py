@@ -55,7 +55,7 @@ SCALE_WAVENUMBER = (
 )
 SCALE_METRICS = 1.05  # lead-time metric plots (+1 pt on top of base)
 SCALE_MAPS_COSMO = (
-    1.15  # COSMO physical-variable gridded maps (+3 pt on top of base)
+    0.90  # COSMO physical-variable gridded maps (dense multi-row layout)
 )
 SCALE_CASE_STUDY = 0.75  # obs case-study scatter maps (dense layout)
 SCALE_ERROR_COSMO = 0.90  # COSMO obs-station error maps (-10 % of base)
