@@ -1330,7 +1330,7 @@ else:
         label="plot",
         allow_nearest=DEBUG_MODE,
     )
-apply_style(SCALE_MAPS_COSMO * 1.05)
+apply_style(SCALE_MAPS_COSMO * 0.735)
 create_comparison_maps(
     ds_gt=ds_gt,
     ds_ml=ds_ml.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT),
@@ -1684,7 +1684,7 @@ else:
     time_selected = resolve_requested_time(
         ds_ml, "start_time", PLOT_TIME, label="plot time"
     )
-apply_style(SCALE_MAPS_COSMO * 1.5)  # restore base for error maps
+apply_style(SCALE_MAPS_COSMO * 1.05)  # restore base for error maps
 create_error_maps(
     ds_gt=ds_gt,
     ds_ml=ds_ml_sampled.isel(
