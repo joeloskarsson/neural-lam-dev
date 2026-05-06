@@ -103,15 +103,7 @@ python scripts/ifs_download.py \
     --output-dir "$WORKDIR"
 ```
 
-## Step 4: Impute missing IFS values
-
-There are missing values in the IFS dataset that need to be addressed.
-
-```zsh
-python scripts/interp_na_ifs.py "$WORKDIR/cosmo_ifs_sample.zarr"
-```
-
-## Step 5: Land–sea mask (LSM)
+## Step 4: Land–sea mask (LSM)
 
 The land-sea mask was already generated for your convenience and is available under
 `scripts/artifacts/`. You already copied it as `$WORKDIR/cosmo_land_sea_mask.zarr`. If you want to
@@ -157,7 +149,7 @@ rm -rf bin
 
 </details>
 
-## Step 6: Preprocess datastores with mllam-data-prep
+## Step 5: Preprocess datastores with mllam-data-prep
 
 This step builds the `.zarr` datastores that Neural-LAM will consume.
 From now on we will work exclusively in the `$WORKDIR`.
@@ -169,7 +161,7 @@ python -m mllam_data_prep --show-progress cosmo_era5_config_sample.yaml     # ~3
 python -m mllam_data_prep --show-progress cosmo_ifs_config_sample.yaml      # ~3min
 ```
 
-## Step 7: Build graphs with weather-model-graphs
+## Step 6: Build graphs with weather-model-graphs
 
 Use the sample configs to build a graph for the COSMO sample run. The resulting graph will be
 identical to the one produced by the full dataset. The graph type is the same as the one used in the
@@ -198,11 +190,11 @@ Result should look like:
 
 ![cosmo_graph](../figures/cosmo_graph.png)
 
-## Step 8: Train model
+## Step 7: Train model
 
 This step trains the hierarchical model on the **sample interior dataset** for 1 epoch just to confirm that the pipeline runs and the loss decreases from the first step. Additionally, `--num_nodes` is reduced to 1. For full paper-level training, see `docs/reproduce_paper.md`.
 
-If you want to skip this part and use the pretrained model checkpoint instead, you can skip to Step 10 for evaluation.
+If you want to skip this part and use the pretrained model checkpoint instead, you can skip to Step 9 for evaluation.
 
 ```zsh
 python -m neural_lam.train_model \
@@ -228,7 +220,7 @@ python -m neural_lam.train_model \
 This reduced training should not take longer than 15 minutes on a single GPU. If you are tracking with wandb
 you should see a `train_loss_epoch` of ~10 and GPU-memory used should be around 45GB; system memory around 100GB.
 
-## Step 9: Finetune from checkpoint
+## Step 8: Finetune from checkpoint
 
 To finetune from a checkpoint (e.g., the one created in Step 8) we first need to locate the
 `CHECKPOINT` from the run above. Then you need to replace <your_run> below with the actual folder
@@ -274,7 +266,7 @@ From validation you should see a RMSE scorecard like this on wandb:
 
 ![scorecard](../figures/cosmo_scorecard.png)
 
-## Step 10: Evaluate and save forecasts to Zarr
+## Step 9: Evaluate and save forecasts to Zarr
 
 Finally, verify that evaluation works and that Neural-LAM can write sample forecasts to Zarr. Here
 the `--val_steps_to_log` and `--ar_steps_eval` are reduced. Set the `CHECKPOINT_FT_SAMPLE` to the
