@@ -69,7 +69,9 @@ class MDPDatastore(BaseRegularGridDatastore):
                     f"The old zarr archive (in {fp_ds}) will be used."
                     "To generate new zarr-archive, move the old one first."
                 )
-            self._ds = xr.open_zarr(fp_ds, consolidated=True)
+            self._ds = xr.open_zarr(
+                fp_ds, consolidated=True, decode_timedelta=True
+            )
 
         if self._ds is None:
             self._ds = mdp.create_dataset(config=self._config)

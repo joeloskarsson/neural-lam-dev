@@ -21,6 +21,7 @@ verification/**/*.png
 verification/**/*.tex
 verification/**/*.csv
 logs
+*cache.pkl
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

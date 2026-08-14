@@ -1029,7 +1029,14 @@ def add_map_features(axes):
                 gl.bottom_labels = True
 
 
-def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
+def plot_comparison_maps(
+    ds_obs,
+    ds_ml,
+    ds_nwp,
+    plot_time=None,
+    variables=None,
+    name_suffix="multi_step",
+):
     """
     Plot comparison between observations, NWP and ML data for each
     variable and forecast step.
@@ -1041,6 +1048,7 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
         plot_time (str): Time for plot title
         variables (list): List of variables to plot. If None, plots all
             common variables
+        name_suffix (str): Suffix appended to the saved file name
     """
     # Convert plot_time to pandas datetime if it's a string
     if isinstance(plot_time, str):
@@ -1081,7 +1089,13 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
     lat_span = extent[3] - extent[2]
     lat_mid = (extent[2] + extent[3]) / 2
     _map_aspect = lon_span * _math.cos(_math.radians(lat_mid)) / lat_span
-    _fig_w = max(15.0, min(27.0, 3 * 6 * _map_aspect + 3))
+    # Single-row figures need more room below the axes for the colorbar, and
+    # their width follows from the resulting panel height to avoid column gaps
+    _bottom = 0.05 if n_steps > 1 else 0.22
+    if n_steps > 1:
+        _fig_w = max(15.0, min(27.0, 3 * 6 * _map_aspect + 3))
+    else:
+        _fig_w = 3 * 6 * (0.9 - _bottom) * _map_aspect / 0.775
 
     for var in variables:
         fig = plt.figure(figsize=(_fig_w, 6 * n_steps), dpi=DPI)
@@ -1243,9 +1257,9 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
 
         add_map_features(axes)
 
-        plt.subplots_adjust(top=0.9, bottom=0.05, hspace=0.105, wspace=0.003)
+        plt.subplots_adjust(top=0.9, bottom=_bottom, hspace=0.105, wspace=0.003)
 
-        cbar_ax = fig.add_axes([0.15, 0.00, 0.7, 0.02])
+        cbar_ax = fig.add_axes([0.15, 0.0 if n_steps > 1 else 0.04, 0.7, 0.02])
         cbar = plt.colorbar(  # noqa: F841
             im2,
             cax=cbar_ax,
@@ -1260,7 +1274,7 @@ def plot_comparison_maps(ds_obs, ds_ml, ds_nwp, plot_time=None, variables=None):
         )
 
         plt.show()
-        save_plot(fig, f"comparison_{var}_multi_step", time=plot_time)
+        save_plot(fig, f"comparison_{var}_{name_suffix}", time=plot_time)
         plt.close()
 
 
@@ -1270,6 +1284,16 @@ plot_comparison_maps(
     ds_ml.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT),
     ds_nwp.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT),
     plot_time=plot_time,
+)
+
+# Reduced version of the wind speed / MSLP map: only the first lead time (+6 h)
+plot_comparison_maps(
+    ds_obs,
+    ds_ml.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT[:1]),
+    ds_nwp.isel(elapsed_forecast_duration=ELAPSED_FORECAST_DURATION_PLOT[:1]),
+    plot_time=plot_time,
+    variables=["wind_speed"],
+    name_suffix="single_step",
 )
 
 
