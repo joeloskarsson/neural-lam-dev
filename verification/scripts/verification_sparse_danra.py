@@ -958,6 +958,18 @@ with ProgressBar():
     ds_nwp_interp = ds_nwp_interp.compute()
     print("NWP interpolation done.")
 
+
+def add_wind_speed(ds):
+    """Add wind speed, the rotation-invariant magnitude of the components."""
+    ds = ds.copy()
+    ds["wind_speed"] = np.hypot(ds["wind_u_10m"], ds["wind_v_10m"])
+    return ds
+
+
+ds_obs = add_wind_speed(ds_obs)
+ds_ml_interp = add_wind_speed(ds_ml_interp)
+ds_nwp_interp = add_wind_speed(ds_nwp_interp)
+
 # %% [markdown]
 # ### 1. Maps
 #
@@ -2148,6 +2160,7 @@ def calculate_meteoswiss_metrics(ds_obs, ds_ml, ds_nwp=None):
             "thresholds": THRESHOLDS_PRECIPITATION,
             "unit": "mm/h",
         },
+        "wind_speed": {"thresholds": THRESHOLDS_WIND, "unit": "m/s"},
         "wind_u_10m": {"thresholds": THRESHOLDS_WIND, "unit": "m/s"},
         "wind_v_10m": {"thresholds": THRESHOLDS_WIND, "unit": "m/s"},
     }

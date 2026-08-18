@@ -5,6 +5,7 @@ set -euo pipefail
 REPO_DIR="/users/sadamov/pyprojects/neural-lam-dev"
 SCRIPT_DIR="${REPO_DIR}/verification/scripts"
 LOGS_DIR="${REPO_DIR}/logs"
+ACCOUNT="${SLURM_ACCOUNT:-ab016}"
 mkdir -p "${LOGS_DIR}"
 
 submit_script() {
@@ -13,7 +14,7 @@ submit_script() {
     echo "Submitting ${job_name}"
     sbatch \
         --job-name="${job_name}" \
-        --account=a122 \
+        --account="${ACCOUNT}" \
         --partition=normal \
         --time=12:00:00 \
         --nodes=1 \
