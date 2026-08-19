@@ -14,6 +14,14 @@ docs/notebooks/plots
 docs/notebooks/tables
 bin/micromamba
 shps
+*.zarr
+verification/**/*.pdf
+verification/**/*.npz
+verification/**/*.png
+verification/**/*.tex
+verification/**/*.csv
+logs
+*cache.pkl
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
