@@ -88,6 +88,7 @@ per-file-ignores = [
 
 [tool.codespell]
 skip = "requirements/*"
+ignore-words-list = "pres"
 
 # Pylint config
 [tool.pylint]
