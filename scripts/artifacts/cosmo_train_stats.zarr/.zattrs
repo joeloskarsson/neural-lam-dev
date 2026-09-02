@@ -1,0 +1,7 @@
+{
+  "title": "COSMO training normalisation statistics for the published neural-lam checkpoint",
+  "source": "recomputed with mllam-data-prep 0.7.0 from /capstor/store/cscs/swissai/a122/COSMO/cosmo_interior_config.yaml",
+  "note": "state__train__diff_std is the AS-TRAINED value and is the std of the second temporal difference (calc_stats rebinds ds). *_1st are the true one-step values. Use the as-trained arrays to run the published checkpoint.",
+  "data_source": "MeteoSwiss KENDA operational analysis",
+  "license": "In Copyright - Non-Commercial Use Permitted"
+}

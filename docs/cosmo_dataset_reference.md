@@ -166,9 +166,32 @@ the model.
 The statistics the checkpoint was trained with are committed at
 `scripts/artifacts/cosmo_train_stats.zarr`, computed over the training split
 2015-11-28T00 to 2019-09-30T00 with `dims: [grid_index, time]`. They are stored against their feature
-names rather than as bare arrays, so ordering cannot be misapplied.
+names rather than as bare arrays, so ordering cannot be misapplied. The original training datastore
+was lost to a truncated archive; these were recomputed from the raw COSMO data with the same pinned
+mllam-data-prep version and validated against the intact fragment of the original stats.
 
-To use them with a different datastore, point at them with `overload_stats_path`:
+A caveat that matters if you compare against your own numbers: `state__train__diff_std` is the
+standard deviation of the **second** temporal difference, not the one-step difference.
+`calc_stats` in mllam-data-prep rebinds its dataset inside the op loop, so with
+`ops: [mean, std, diff_mean, diff_std]` the differencing is applied twice
+([mllam-data-prep#102](https://github.com/mllam/mllam-data-prep/issues/102)). `diff_mean` is
+unaffected. The checkpoint was trained against that value and
+[`base_graph_model.py`](../neural_lam/models/base_graph_model.py) rescales predicted increments by
+it, so it has to be reproduced rather than corrected. Substituting a true one-step standard
+deviation rescales every predicted increment and changes the forecasts. For reference, the zarr also
+carries `state__train__diff_mean_1st` / `diff_std_1st`, the honest one-step values, computed
+alongside the as-trained arrays in the same recompute; use them only to understand the gap, not to
+run the checkpoint.
+
+`overload_stats_path` is handed to `MDPDatastore`, which derives the zarr path from the config
+filename, so the statistics need a yaml sibling with the same stem. Only the filename matters, the
+config contents are never read for statistics, so copy the interior config next to the zarr:
+
+```bash
+cp scripts/cosmo_interior_config.yaml scripts/artifacts/cosmo_train_stats.yaml
+```
+
+Then point at it from your own model config:
 
 ```yaml
 datastore:
@@ -177,9 +200,10 @@ datastore:
   overload_stats_path: artifacts/cosmo_train_stats.yaml
 ```
 
-The yaml and the zarr must stay siblings with the same stem, because `MDPDatastore` derives the zarr
-path from the config filename. If the zarr is missing, the datastore falls through to
-`mdp.create_dataset` and tries to build it from raw data, which will fail.
+Two things to expect. `MDPDatastore` warns that the config is newer than the zarr, which is harmless
+here and it still uses the committed zarr. And if the zarr is ever missing, the datastore falls
+through to `mdp.create_dataset` and tries to build the full datastore from raw COSMO data, which will
+fail.
 
 ## Transferring the checkpoint to another domain
 

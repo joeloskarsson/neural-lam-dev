@@ -1,0 +1,35 @@
+{
+  "geography": {
+    "angleOfRotationInDegrees": 0.0,
+    "bitmapPresent": 0,
+    "gridType": "rotated_ll",
+    "iDirectionIncrementInDegrees": 20.0,
+    "iScansNegatively": 0,
+    "jDirectionIncrementInDegrees": 0.019999999999999997,
+    "jPointsAreConsecutive": 0,
+    "jScansPositively": 1,
+    "latitudeOfFirstGridPointInDegrees": -4.42,
+    "latitudeOfLastGridPointInDegrees": 3.36,
+    "latitudeOfSouthernPoleInDegrees": -43.0,
+    "longitudeOfFirstGridPointInDegrees": -6820.0,
+    "longitudeOfLastGridPointInDegrees": 4800.0,
+    "longitudeOfSouthernPoleInDegrees": 10.0
+  },
+  "origin_x": 0.0,
+  "origin_y": 0.0,
+  "origin_z": 0.0,
+  "parameter": {
+    "centre": "lssw",
+    "name": "U-Component of Wind",
+    "paramId": 500028,
+    "shortName": "U",
+    "units": "m s-1"
+  },
+  "vcoord_type": "hybridLayer",
+  "vref": "native",
+  "variables_mapping_dim": "state_feature",
+  "coordinates": "state_feature_long_name state_feature_source_dataset state_feature_units",
+  "_ARRAY_DIMENSIONS": [
+    "state_feature"
+  ]
+}

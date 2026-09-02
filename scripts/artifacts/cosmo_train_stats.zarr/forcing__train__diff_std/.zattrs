@@ -1,0 +1,9 @@
+{
+  "long_name": "top-of-atmosphere incoming radiation",
+  "units": "W*m**-2",
+  "variables_mapping_dim": "forcing_feature",
+  "coordinates": "forcing_feature_long_name forcing_feature_source_dataset forcing_feature_units",
+  "_ARRAY_DIMENSIONS": [
+    "forcing_feature"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "geography": {
+    "angleOfRotationInDegrees": 0.0,
+    "bitmapPresent": 0,
+    "gridType": "rotated_ll",
+    "iDirectionIncrementInDegrees": 0.02,
+    "iScansNegatively": 0,
+    "jDirectionIncrementInDegrees": 0.019999999999999997,
+    "jPointsAreConsecutive": 0,
+    "jScansPositively": 1,
+    "latitudeOfFirstGridPointInDegrees": -4.42,
+    "latitudeOfLastGridPointInDegrees": 3.36,
+    "latitudeOfSouthernPoleInDegrees": -43.0,
+    "longitudeOfFirstGridPointInDegrees": -6.82,
+    "longitudeOfLastGridPointInDegrees": 4.8,
+    "longitudeOfSouthernPoleInDegrees": 10.0
+  },
+  "origin_x": 0.0,
+  "origin_y": 0.0,
+  "origin_z": 0.0,
+  "parameter": {
+    "centre": "lssw",
+    "name": "Geometric Height of the earths surface above sea level",
+    "paramId": 500007,
+    "shortName": "HSURF",
+    "units": "m"
+  },
+  "vcoord_type": "surface",
+  "vref": "native",
+  "variables_mapping_dim": "static_feature",
+  "coordinates": "static_feature_long_name static_feature_source_dataset static_feature_units",
+  "_ARRAY_DIMENSIONS": [
+    "static_feature"
+  ]
+}
