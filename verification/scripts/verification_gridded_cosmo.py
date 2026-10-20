@@ -624,7 +624,7 @@ ds_gt
 
 # %%
 zarr_path = (
-    "/capstor/store/cscs/swissai/a122/sadamov/cosmo_e_forecast_fixed.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/cosmo_e_forecast_fixed.zarr"
 )
 if not Path(zarr_path).exists():
     ds_nwp = xr.open_zarr(PATH_NWP, decode_timedelta=True)

@@ -51,7 +51,7 @@ from scores.continuous.correlation import pearsonr
 # %%
 # Constants for station obs
 path_obs = (
-    "/capstor/store/cscs/swissai/a122/sadamov/danra_station_observations.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/danra_station_observations.zarr"
 )
 url_obs = "https://dmigw.govcloud.dk/v2/metObs/collections/observation/items"
 api_limit = 300000

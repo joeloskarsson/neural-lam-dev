@@ -61,21 +61,21 @@ from scores.spatial import fss_2d
 # (default is mdp-datastore)
 PATH_GROUND_TRUTH = "cosmo.datastore.zarr"
 # Raw NWP forecast (original lead_time/time dims, precipitation_1hr)
-PATH_NWP_RAW = "/capstor/store/cscs/swissai/a122/sadamov/cosmo_e_forecast.zarr"
+PATH_NWP_RAW = "/capstor/store/cscs/swissai/ab016/sadamov/cosmo_e_forecast.zarr"
 # Processed NWP (renamed dims, 120 lead times) — built once from PATH_NWP_RAW
 PATH_NWP = (
-    "/capstor/store/cscs/swissai/a122/sadamov/cosmo_e_forecast_fixed.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/cosmo_e_forecast_fixed.zarr"
 )
 # This path should point to the ML forecast data in zarr format
 # (e.g. produced by neural-lam in `eval` mode)
 PATH_ML = (
-    "/capstor/store/cscs/swissai/a122/sadamov/lam_model_forecasts"
+    "/capstor/store/cscs/swissai/ab016/sadamov/lam_model_forecasts"
     "/preds_7_19_margin_interior_lr_0001_ar_12.zarr"
 )
 # This path should point to the boundary data in zarr format
 # (default is MDP-datastore)
 PATH_BOUNDARY = (
-    "/capstor/store/cscs/swissai/a122/sadamov"
+    "/capstor/store/cscs/swissai/ab016/sadamov"
     "/ifs_7_19_margin_interior.datastore.zarr"
 )
 

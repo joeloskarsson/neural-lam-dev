@@ -23,7 +23,7 @@ import xarray as xr
 
 # ── Config (must match verification_sparse_danra.py) ──────────────────────────
 PATH_OBS = (
-    "/capstor/store/cscs/swissai/a122/sadamov/danra_station_observations.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/danra_station_observations.zarr"
 )
 PATH_ML = "48h_eval_test_7deg_rect_hi4_2867.zarr"
 PLOT_TIME = "2020-02-09T12:00:00"

@@ -29,10 +29,15 @@ absolute and hardcoded outright:
 
 | Path | Used by |
 | --- | --- |
-| `/capstor/.../a122/sadamov/cosmo_e_forecast.zarr` | `verification_gridded_cosmo_metrics.py`, `..._wind_sal_tmp.py` |
-| `/capstor/.../a122/sadamov/cosmo_e_forecast_fixed.zarr` | `verification_gridded_cosmo.py`, `..._metrics.py`, `..._wind_sal_tmp.py` |
-| `/capstor/.../a122/sadamov/lam_model_forecasts` | `verification_gridded_cosmo_metrics.py`, `..._wind_sal_tmp.py` |
-| `/capstor/.../a122/sadamov/danra_station_observations.zarr` | `verification_sparse_danra.py`, `fetch_danra_obs.py`, `temp_wind_speed_map_6h_danra.py` |
+| `/capstor/.../ab016/sadamov/cosmo_e_forecast.zarr` | `verification_gridded_cosmo_metrics.py`, `..._wind_sal_tmp.py` |
+| `/capstor/.../ab016/sadamov/cosmo_e_forecast_fixed.zarr` | `verification_gridded_cosmo.py`, `..._metrics.py`, `..._wind_sal_tmp.py` |
+| `/capstor/.../ab016/sadamov/lam_model_forecasts` | `verification_gridded_cosmo_metrics.py`, `..._wind_sal_tmp.py` |
+| `/capstor/.../ab016/sadamov/danra_station_observations.zarr` | `verification_sparse_danra.py`, `fetch_danra_obs.py`, `temp_wind_speed_map_6h_danra.py` |
+
+The two COSMO-E paths exist there only as archives and must be unpacked first:
+`cosmo_e_forecast.zarr.tar.gz` (205 GB) and
+`cosmo_e_forecast_fixed_processed_120h.zarr.tar.gz` (165 GB, which unpacks to
+`cosmo_e_forecast_fixed_processed_120h.zarr`, not `cosmo_e_forecast_fixed.zarr`).
 
 **3. Scratch/temp directories.** Several scripts write dask spill and temp
 files to a hardcoded `/iopsstor/scratch/cscs/sadamov`. Grep for it:

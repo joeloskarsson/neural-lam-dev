@@ -24,12 +24,12 @@ from pysteps.verification.salscores import sal
 # ── Config (keep in sync with main script) ───────────────────────────────────
 
 PATH_GROUND_TRUTH = "cosmo.datastore.zarr"
-PATH_NWP_RAW = "/capstor/store/cscs/swissai/a122/sadamov/cosmo_e_forecast.zarr"
+PATH_NWP_RAW = "/capstor/store/cscs/swissai/ab016/sadamov/cosmo_e_forecast.zarr"
 PATH_NWP = (
-    "/capstor/store/cscs/swissai/a122/sadamov/cosmo_e_forecast_fixed.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/cosmo_e_forecast_fixed.zarr"
 )
 PATH_ML = (
-    "/capstor/store/cscs/swissai/a122/sadamov/lam_model_forecasts"
+    "/capstor/store/cscs/swissai/ab016/sadamov/lam_model_forecasts"
     "/preds_7_19_margin_interior_lr_0001_ar_12.zarr"
 )
 

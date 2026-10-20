@@ -18,7 +18,7 @@ PATH_NWP = "danra_test_nwp_forecasts.zarr"
 # Override with the extracted subset when the full ML zarr is not unpacked
 PATH_ML = os.environ.get("PATH_ML", "48h_eval_test_7deg_rect_hi4_2867.zarr")
 PATH_OBS = (
-    "/capstor/store/cscs/swissai/a122/sadamov/danra_station_observations.zarr"
+    "/capstor/store/cscs/swissai/ab016/sadamov/danra_station_observations.zarr"
 )
 
 VARIABLES_ML = {
