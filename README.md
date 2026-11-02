@@ -56,7 +56,7 @@ The overall steps to get to a running model are:
 
 ### Reproduce COSMO Example (Step‑by‑Step)
 
-  For a practical, end‑to‑end walkthrough (download → preprocess → graph → train/eval), see the concise guide in `docs/reproduce_paper_sample.md` with reduced data and resources. For a full reproduction of the study with all 7TB of data see `docs/reproduce_paper.md`.
+  For a practical, end‑to‑end walkthrough (download → preprocess → graph → train/eval), see the concise guide in `docs/reproduce_paper_sample.md` with reduced data and resources. For a full reproduction of the study with all 7TB of data see `docs/reproduce_paper.md`. The same walkthrough is a notebook in `notebooks/reproduce_paper_sample.ipynb`; on CSCS Clariden, `notebooks/reproduce_paper_sample_clariden.ipynb` runs it from the local data copies without downloads.
 
 ## Neural-LAM
 

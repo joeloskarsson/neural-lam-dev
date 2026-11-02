@@ -13,6 +13,34 @@ the full paper reproduction**. For the full setup, see `docs/reproduce_paper.md`
 
 Prefer running on a GPU machine; consider SLURM/cluster/container setups.
 
+## Running on CSCS Clariden
+
+On Clariden every input of this guide is already on disk under `/capstor/store/cscs/swissai/ab016`
+(Unix group `ab016`), so Steps 0 and 3 are skipped. `scripts/reproduce_paper_sample_clariden.sh` runs
+the remaining steps as Slurm jobs (account `ab016` by default, `ACCOUNT=...` to change; outputs in
+`WORKDIR`, default `/iopsstor/scratch/cscs/$USER/neural_lam_sample`):
+
+```zsh
+git clone --branch research https://github.com/joeloskarsson/neural-lam-dev.git && cd neural-lam-dev
+bash scripts/reproduce_paper_sample_clariden.sh env     # Step 1, once
+bash scripts/reproduce_paper_sample_clariden.sh prep    # Steps 2, 5 and 6
+bash scripts/reproduce_paper_sample_clariden.sh train   # Step 7 (optional)
+bash scripts/reproduce_paper_sample_clariden.sh eval    # Step 9 with the published checkpoint
+bash scripts/reproduce_paper_sample_clariden.sh plot    # forecast vs COSMO analysis, WORKDIR/sample_summary.png
+```
+
+| Input | Path under `/capstor/store/cscs/swissai/ab016` |
+| --- | --- |
+| COSMO sample (Step 0) | `COSMO/cosmo_sample.zarr` |
+| ERA5 boundary (Step 3) | `COSMO/era_subset.zarr` (2015-11 to 2020-10; the config selects the sample window) |
+| Published checkpoint (Step 0) | `sadamov/cosmo_model.ckpt` (same file as the Zenodo record) |
+
+IFS forecasts for the sample window are not on Clariden, and fetching them from WeatherBench 2 is far
+too slow there, so the Clariden run evaluates the published checkpoint with ERA5 boundaries
+(`cosmo_model_config_era5_sample.yaml`) instead of IFS as in Step 9, with the training statistics of
+the published checkpoint (see Step 9). It checks the pipeline end to end; the paper's scores need the
+full setup of `docs/reproduce_paper.md`.
+
 ## Step 0: Download sample resources & set path
 
 Download the **COSMO sample dataset** and the published checkpoint into a local `WORKDIR` directory
@@ -61,11 +89,11 @@ uv pip install ".[graph]" "zarr<3" # experiments were originally run with zarr<3
 
 # mllam-data-prep (paper tag)
 git clone --branch building-ml-lams https://github.com/sadamov/mllam-data-prep.git
-uv pip install mllam-data-prep
+uv pip install ./mllam-data-prep
 
 # weather-model-graphs (paper tag)
 git clone --branch building-ml-lams https://github.com/joeloskarsson/weather-model-graphs.git
-uv pip install weather-model-graphs
+uv pip install ./weather-model-graphs
 ```
 
 ## Step 2: Prepare sample configs and artifacts
@@ -272,6 +300,21 @@ Finally, verify that evaluation works and that Neural-LAM can write sample forec
 the `--val_steps_to_log` and `--ar_steps_eval` are reduced. Set the `CHECKPOINT_FT_SAMPLE` to the
 path of your (finetuned) sample checkpoint. Or set it to the provided checkpoint at
 `WORKDIR/cosmo_model.ckpt`.
+
+The provided checkpoint was trained with the normalisation statistics of the full training period, not
+those of the sample. To evaluate it, point the model config at those statistics
+(`scripts/artifacts/cosmo_train_stats.zarr`, see `docs/cosmo_dataset_reference.md`):
+
+```zsh
+cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" "$WORKDIR/"
+cp "$WORKDIR/cosmo_interior_config_sample.yaml" "$WORKDIR/cosmo_train_stats.yaml"   # only the stem is used
+sed 's|^  config_path: cosmo_interior_config_sample.yaml$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
+    "$WORKDIR/cosmo_model_config_ifs_sample.yaml" > "$WORKDIR/cosmo_model_config_ifs_published.yaml"
+```
+
+and use `--config_path "$WORKDIR/cosmo_model_config_ifs_published.yaml"` below. The `time` coordinate of
+the written zarr belongs to the last start time; the valid time of a forecast is
+`start_time + elapsed_forecast_duration`.
 
 ```zsh
 CHECKPOINT_FT_SAMPLE=$WORKDIR/saved_models/<your_finetune_run>/min_val_mean_loss.ckpt # replace <your_finetune_run>

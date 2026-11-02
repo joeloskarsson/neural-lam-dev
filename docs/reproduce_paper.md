@@ -49,11 +49,11 @@ uv pip install ".[graph]" "zarr<3" # experiments were originally run with zarr<3
 
 # mllam-data-prep (paper tag)
 git clone --branch building-ml-lams https://github.com/sadamov/mllam-data-prep.git
-uv pip install mllam-data-prep
+uv pip install ./mllam-data-prep
 
 # weather-model-graphs (paper tag)
 git clone --branch building-ml-lams https://github.com/joeloskarsson/weather-model-graphs.git
-uv pip install weather-model-graphs
+uv pip install ./weather-model-graphs
 ```
 
 ## Step 2: Prepare configs and artifacts
