@@ -274,13 +274,17 @@ path of your (finetuned) sample checkpoint. Or set it to the provided checkpoint
 `WORKDIR/cosmo_model.ckpt`.
 
 The provided checkpoint was trained with the normalisation statistics of the full training period, not
-those of the sample. To evaluate it, point the model config at those statistics
-(`scripts/artifacts/cosmo_train_stats.zarr`, see `docs/cosmo_dataset_reference.md`):
+those of the sample, for the interior (`scripts/artifacts/cosmo_train_stats.zarr`) and for the ERA5
+boundary, with which it also normalises IFS (`scripts/artifacts/cosmo_era5_train_stats.zarr`). To
+evaluate it, point the model config at both (see `docs/cosmo_dataset_reference.md`); with the sample's
+own boundary statistics T_2M drifts about 3.7 K too cold by +24 h:
 
 ```zsh
-cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" "$WORKDIR/"
+cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" "$SRCDIR/scripts/artifacts/cosmo_era5_train_stats.zarr" "$WORKDIR/"
 cp "$WORKDIR/cosmo_interior_config_sample.yaml" "$WORKDIR/cosmo_train_stats.yaml"   # only the stem is used
-sed 's|^  config_path: cosmo_interior_config_sample.yaml$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
+cp "$WORKDIR/cosmo_era5_config_sample.yaml" "$WORKDIR/cosmo_era5_train_stats.yaml"  # only the stem is used
+sed -e 's|^  config_path: cosmo_interior_config_sample.yaml$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
+    -e 's|^  overload_stats_path: cosmo_era5_config_sample.yaml$|  overload_stats_path: cosmo_era5_train_stats.yaml|' \
     "$WORKDIR/cosmo_model_config_ifs_sample.yaml" > "$WORKDIR/cosmo_model_config_ifs_published.yaml"
 ```
 

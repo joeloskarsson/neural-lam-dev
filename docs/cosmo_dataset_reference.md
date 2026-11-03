@@ -222,7 +222,15 @@ none of them is repaired by rescaling:
 6. **Statistics are computed over the `train` split only.** A short train window gives a much smaller
    standard deviation than the 4-year one used here, which inflates standardised anomalies.
 
-The boundary side needs no special handling. The ERA5 and IFS datastores are built from public
-WeatherBench2 subsets by `scripts/era_download.py` and `scripts/ifs_download.py`, so running steps 3
-and 6 of [reproduce_paper.md](reproduce_paper.md) reproduces the boundary statistics the checkpoint
-was trained with.
+The boundary side needs no special handling in the full reproduction. The ERA5 and IFS datastores are
+built from public WeatherBench2 subsets by `scripts/era_download.py` and `scripts/ifs_download.py`, so
+running steps 3 and 6 of [reproduce_paper.md](reproduce_paper.md) reproduces the boundary statistics the
+checkpoint was trained with. The model configs normalise the IFS boundary with the ERA5 statistics
+(`overload_stats_path: cosmo_era5_config.yaml`).
+
+The `*_sample` configs compute boundary statistics over the sample window only, which the checkpoint
+never saw: on the COSMO sample T_2M then drifts about 3.7 K too cold by +24 h (bias -0.05 K with the
+right statistics). `scripts/artifacts/cosmo_era5_train_stats.zarr` holds the full-period ERA5 boundary
+statistics (train split 2015-11-28T00 to 2019-09-30T00, extracted from the datastore of
+`scripts/cosmo_era5_config.yaml`); use it as the boundary `overload_stats_path` with a yaml sibling,
+as above. Step 9 of [reproduce_paper_sample.md](reproduce_paper_sample.md) does this.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # docs/reproduce_paper_sample.md on CSCS Clariden, with every input read from the local
 # copies under /capstor/store/cscs/swissai/ab016 instead of downloading them. Needs Unix
-# group ab016, a Slurm account and `uv` on PATH.
+# group ab016, a Slurm account and `uv` on PATH. Walkthrough: docs/reproduce_paper_sample_clariden.md.
 #
 #   bash scripts/reproduce_paper_sample_clariden.sh env     # once: .venv in this checkout (Step 1)
 #   bash scripts/reproduce_paper_sample_clariden.sh prep    # WORKDIR, datastores, graph (Steps 2, 5, 6)
@@ -63,11 +63,14 @@ for f in cosmo_interior_config_sample.yaml cosmo_era5_config_sample.yaml cosmo_i
     cp "$SRCDIR/scripts/\$f" .
 done
 rm -rf cosmo_land_sea_mask.zarr && cp -r "$SRCDIR/scripts/artifacts/cosmo_land_sea_mask.zarr" .
-# Statistics the published checkpoint was trained with (docs/cosmo_dataset_reference.md); the yaml
-# sibling only lends its file stem, its content is not read.
-rm -rf cosmo_train_stats.zarr && cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" .
+# Interior and ERA5 boundary statistics the published checkpoint was trained with
+# (docs/cosmo_dataset_reference.md); the yaml siblings only lend their file stems.
+rm -rf cosmo_train_stats.zarr cosmo_era5_train_stats.zarr
+cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" "$SRCDIR/scripts/artifacts/cosmo_era5_train_stats.zarr" .
 cp cosmo_interior_config_sample.yaml cosmo_train_stats.yaml
-sed 's|^  config_path: cosmo_interior_config_sample.yaml\$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
+cp cosmo_era5_config_sample.yaml cosmo_era5_train_stats.yaml
+sed -e 's|^  config_path: cosmo_interior_config_sample.yaml\$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
+    -e 's|^  overload_stats_path: cosmo_era5_config_sample.yaml\$|  overload_stats_path: cosmo_era5_train_stats.yaml|' \
     cosmo_model_config_ifs_sample.yaml > cosmo_model_config_ifs_published.yaml
 mkdir -p figures && cp "$SRCDIR/figures/earth_texture.jpeg" figures/
 ln -sfn "$AB016/COSMO/cosmo_sample.zarr" cosmo_sample.zarr

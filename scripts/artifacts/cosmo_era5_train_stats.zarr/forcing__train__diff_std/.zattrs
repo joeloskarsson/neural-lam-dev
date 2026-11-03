@@ -1,0 +1,6 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "forcing_feature"
+    ],
+    "coordinates": "forcing_feature_long_name forcing_feature_source_dataset forcing_feature_units"
+}

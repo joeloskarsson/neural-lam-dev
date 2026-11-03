@@ -1,0 +1,7 @@
+{
+    "data_source": "ERA5 via WeatherBench 2 (gs://weatherbench2/datasets/era5/1959-2022-6h-1440x721.zarr)",
+    "license": "Contains modified Copernicus Climate Change Service information",
+    "note": "The published checkpoint normalises its boundary (ERA5 and IFS alike) with these statistics. The *_sample configs compute boundary statistics over the sample window only, which does not match.",
+    "source": "forcing/static statistics of the datastore built with mllam-data-prep v0.5.0 from scripts/cosmo_era5_config.yaml (train split 2015-11-28T00 to 2019-09-30T00) on the scripts/era_download.py subset of ERA5, interior domain of scripts/cosmo_interior_config.yaml",
+    "title": "ERA5 boundary normalisation statistics for the published neural-lam COSMO checkpoint"
+}
