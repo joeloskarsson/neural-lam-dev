@@ -13,34 +13,6 @@ the full paper reproduction**. For the full setup, see `docs/reproduce_paper.md`
 
 Prefer running on a GPU machine; consider SLURM/cluster/container setups.
 
-## Running on CSCS Clariden
-
-On Clariden every input of this guide is already on disk under `/capstor/store/cscs/swissai/ab016`
-(Unix group `ab016`), so Steps 0 and 3 are skipped. `scripts/reproduce_paper_sample_clariden.sh` runs
-the remaining steps as Slurm jobs (account `ab016` by default, `ACCOUNT=...` to change; outputs in
-`WORKDIR`, default `/iopsstor/scratch/cscs/$USER/neural_lam_sample`):
-
-```zsh
-git clone --branch research https://github.com/joeloskarsson/neural-lam-dev.git && cd neural-lam-dev
-bash scripts/reproduce_paper_sample_clariden.sh env     # Step 1, once
-bash scripts/reproduce_paper_sample_clariden.sh prep    # Steps 2, 5 and 6
-bash scripts/reproduce_paper_sample_clariden.sh train   # Step 7 (optional)
-bash scripts/reproduce_paper_sample_clariden.sh eval    # Step 9 with the published checkpoint
-bash scripts/reproduce_paper_sample_clariden.sh plot    # forecast vs COSMO analysis, WORKDIR/sample_summary.png
-```
-
-| Input | Path under `/capstor/store/cscs/swissai/ab016` |
-| --- | --- |
-| COSMO sample (Step 0) | `COSMO/cosmo_sample.zarr` |
-| ERA5 boundary (Step 3) | `COSMO/era_subset.zarr` (2015-11 to 2020-10; the config selects the sample window) |
-| IFS boundary (Step 3) | `COSMO/cosmo_ifs_sample.zarr` (`scripts/ifs_download.py` output for the sample window) |
-| Published checkpoint (Step 0) | `sadamov/cosmo_model.ckpt` (same file as the Zenodo record) |
-
-The evaluation is Step 9 with the published checkpoint and its training statistics. It checks the
-pipeline end to end; the paper's scores need the full setup of `docs/reproduce_paper.md`. On the
-sample, T_2M drifts cold over the whole domain (mean bias -0.2 K at +1 h, -3.7 K at +24 h, the same with
-ERA5 boundaries); the cause is not identified.
-
 ## Step 0: Download sample resources & set path
 
 Download the **COSMO sample dataset** and the published checkpoint into a local `WORKDIR` directory
