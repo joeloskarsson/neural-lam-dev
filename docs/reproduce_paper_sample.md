@@ -33,13 +33,13 @@ bash scripts/reproduce_paper_sample_clariden.sh plot    # forecast vs COSMO anal
 | --- | --- |
 | COSMO sample (Step 0) | `COSMO/cosmo_sample.zarr` |
 | ERA5 boundary (Step 3) | `COSMO/era_subset.zarr` (2015-11 to 2020-10; the config selects the sample window) |
+| IFS boundary (Step 3) | `COSMO/cosmo_ifs_sample.zarr` (`scripts/ifs_download.py` output for the sample window) |
 | Published checkpoint (Step 0) | `sadamov/cosmo_model.ckpt` (same file as the Zenodo record) |
 
-IFS forecasts for the sample window are not on Clariden, and fetching them from WeatherBench 2 is far
-too slow there, so the Clariden run evaluates the published checkpoint with ERA5 boundaries
-(`cosmo_model_config_era5_sample.yaml`) instead of IFS as in Step 9, with the training statistics of
-the published checkpoint (see Step 9). It checks the pipeline end to end; the paper's scores need the
-full setup of `docs/reproduce_paper.md`.
+The evaluation is Step 9 with the published checkpoint and its training statistics. It checks the
+pipeline end to end; the paper's scores need the full setup of `docs/reproduce_paper.md`. On the
+sample, T_2M drifts cold over the whole domain (mean bias -0.2 K at +1 h, -3.7 K at +24 h, the same with
+ERA5 boundaries); the cause is not identified.
 
 ## Step 0: Download sample resources & set path
 

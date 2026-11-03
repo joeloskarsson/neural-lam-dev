@@ -12,9 +12,8 @@
 # Local inputs (Step 0 and 3 of the guide):
 #   ab016/COSMO/cosmo_sample.zarr       COSMO sample 2016-01/02 (same as the ETH Research Collection sample)
 #   ab016/COSMO/era_subset.zarr         ERA5 boundary 2015-11 to 2020-10 (scripts/era_download.py output)
+#   ab016/COSMO/cosmo_ifs_sample.zarr   IFS HRES boundary forecasts 2016-01-01 to 2016-03-07 (scripts/ifs_download.py output)
 #   ab016/sadamov/cosmo_model.ckpt      published checkpoint (Zenodo record 15131838)
-# IFS forecasts for the sample window are not on Clariden (fetching them from WeatherBench 2 is far too
-# slow here), so the evaluation uses the ERA5 boundary config; the guide's Step 9 uses IFS.
 # Outputs go to WORKDIR (default /iopsstor/scratch/cscs/$USER/neural_lam_sample, purgeable).
 
 set -euo pipefail
@@ -69,13 +68,15 @@ rm -rf cosmo_land_sea_mask.zarr && cp -r "$SRCDIR/scripts/artifacts/cosmo_land_s
 rm -rf cosmo_train_stats.zarr && cp -r "$SRCDIR/scripts/artifacts/cosmo_train_stats.zarr" .
 cp cosmo_interior_config_sample.yaml cosmo_train_stats.yaml
 sed 's|^  config_path: cosmo_interior_config_sample.yaml\$|&\n  overload_stats_path: cosmo_train_stats.yaml|' \
-    cosmo_model_config_era5_sample.yaml > cosmo_model_config_era5_published.yaml
+    cosmo_model_config_ifs_sample.yaml > cosmo_model_config_ifs_published.yaml
 mkdir -p figures && cp "$SRCDIR/figures/earth_texture.jpeg" figures/
 ln -sfn "$AB016/COSMO/cosmo_sample.zarr" cosmo_sample.zarr
 ln -sfn "$AB016/COSMO/era_subset.zarr" cosmo_era5_sample.zarr
+ln -sfn "$AB016/COSMO/cosmo_ifs_sample.zarr" cosmo_ifs_sample.zarr
 ln -sfn "$AB016/sadamov/cosmo_model.ckpt" cosmo_model.ckpt
 python -m mllam_data_prep cosmo_interior_config_sample.yaml
 python -m mllam_data_prep cosmo_era5_config_sample.yaml
+python -m mllam_data_prep cosmo_ifs_config_sample.yaml
 bash cosmo_build_graphs_sample.sh
 EOF
     ;;
@@ -96,7 +97,7 @@ eval)
 source "$SRCDIR/.venv/bin/activate"
 cd "$WORKDIR"
 export CUDA_VISIBLE_DEVICES=0   # one GPU, as in the guide (multi-GPU evaluation skews the metrics)
-python -m neural_lam.train_model --config_path cosmo_model_config_era5_published.yaml \
+python -m neural_lam.train_model --config_path cosmo_model_config_ifs_published.yaml \
     --model hi_lam --epochs 1 --eval test --n_example_pred 1 --ar_steps_eval 24 \
     --val_steps_to_log 1 6 12 18 24 --hidden_dim 300 --hidden_dim_grid 150 --time_delta_enc_dim 32 \
     --processor_layers 2 --num_nodes 1 --batch_size 1 --plot_vars T_2M U_10M --precision bf16-mixed \
