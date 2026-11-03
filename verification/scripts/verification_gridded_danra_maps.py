@@ -912,8 +912,8 @@ def create_comparison_maps(
     # Select time
     if plot_time is None:
         random.seed(random_seed)
-        time_index = random.randint(0, len(ds_gt.time) - 1)
-        time_selected = ds_ml.time[time_index].values
+        time_index = random.randint(0, len(ds_ml.start_time) - 1)
+        time_selected = ds_ml.start_time[time_index].values
     else:
         time_selected = plot_time
 

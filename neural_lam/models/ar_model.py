@@ -529,6 +529,10 @@ class ARModel(pl.LightningModule):
             da_pred.coords["start_time"] = t0
             da_pred.coords["elapsed_forecast_duration"] = da_pred.time - t0
             da_pred = da_pred.swap_dims({"time": "elapsed_forecast_duration"})
+            # The valid time is start_time + elapsed_forecast_duration. A
+            # `time` coordinate along elapsed_forecast_duration alone would
+            # be overwritten by every append, keeping only the last forecast.
+            da_pred = da_pred.drop_vars("time")
             da_pred.name = "state"
             das_pred.append(da_pred)
 

@@ -118,7 +118,6 @@ import xarray as xr
 workdir = Path(sys.argv[1])
 fc = xr.open_zarr(workdir / "cosmo_sample_forecasts.zarr")["state"].isel(start_time=0)
 pred = fc.sel(state_feature="T_2M").isel(elapsed_forecast_duration=-1)
-# The zarr's `time` coordinate belongs to the last start time; valid time = start_time + lead.
 valid = pred["start_time"].values + pred["elapsed_forecast_duration"].values
 truth = xr.open_zarr(workdir / "cosmo_sample.zarr")["T_2M"].sel(time=valid).transpose(*pred.dims)
 hours = int(pred["elapsed_forecast_duration"].values / 3.6e12)

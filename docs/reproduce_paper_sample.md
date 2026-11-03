@@ -312,9 +312,10 @@ sed 's|^  config_path: cosmo_interior_config_sample.yaml$|&\n  overload_stats_pa
     "$WORKDIR/cosmo_model_config_ifs_sample.yaml" > "$WORKDIR/cosmo_model_config_ifs_published.yaml"
 ```
 
-and use `--config_path "$WORKDIR/cosmo_model_config_ifs_published.yaml"` below. The `time` coordinate of
-the written zarr belongs to the last start time; the valid time of a forecast is
-`start_time + elapsed_forecast_duration`.
+and use `--config_path "$WORKDIR/cosmo_model_config_ifs_published.yaml"` below. The valid time of a
+forecast in the written zarr is `start_time + elapsed_forecast_duration`. Zarrs written before
+2026-11-03 also carry a `time` coordinate that holds the valid times of the last start time for every
+forecast; ignore it.
 
 ```zsh
 CHECKPOINT_FT_SAMPLE=$WORKDIR/saved_models/<your_finetune_run>/min_val_mean_loss.ckpt # replace <your_finetune_run>
@@ -350,7 +351,6 @@ Coordinates:
 * elapsed_forecast_duration  (elapsed_forecast_duration) timedelta64[ns] 192B ...
 * start_time                 (start_time) datetime64[ns] 8B 2016-02-27
 * state_feature              (state_feature) <U13 3kB 'U_lev_6' ... 'ATHB_S'
-  time                       (elapsed_forecast_duration) datetime64[ns] 192B dask.array<chunksize=(1,), meta=np.ndarray>
 * x                          (x) int64 5kB 0 1 2 3 4 5 ... 577 578 579 580 581
 * y                          (y) int64 3kB 0 1 2 3 4 5 ... 385 386 387 388 389
 Data variables:
