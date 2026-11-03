@@ -33,3 +33,20 @@ bash scripts/reproduce_paper_sample_clariden.sh plot    # after eval, on the log
 ```
 
 ## Expected result
+
+The published checkpoint on the four test start times (2016-02-26T12 to 2016-02-28T00, IFS boundaries),
+domain-mean T_2M against the COSMO analysis:
+
+| Lead | Bias | RMSE |
+| --- | --- | --- |
+| +1 h | -0.01 K | 0.35 K |
+| +6 h | -0.14 K | 0.64 K |
+| +12 h | -0.08 K | 0.86 K |
+| +24 h | -0.05 K | 0.97 K |
+
+`plot` shows the last start time at +24 h:
+
+![T_2M forecast vs COSMO analysis at +24 h](../figures/cosmo_sample_clariden_t2m.png)
+
+This checks the pipeline end to end; the paper's scores come from the full setup of
+[reproduce_paper.md](reproduce_paper.md).
