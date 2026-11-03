@@ -17,7 +17,7 @@ repos:
     hooks:
       - id: codespell
         description: Check for spelling errors
-        exclude: docs/notebooks/plot_region.ipynb
+        exclude: ^(docs/notebooks/plot_region|notebooks/reproduce_paper_sample_clariden)\.ipynb$
 
   - repo: https://github.com/psf/black
     rev: 22.3.0
