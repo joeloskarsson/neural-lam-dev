@@ -21,7 +21,10 @@ from dask.diagnostics import ProgressBar
 
 # ERA5 from WeatherBench2 (public GCS bucket path)
 era = xr.open_zarr(
-    "gs://weatherbench2/datasets/era5/1959-2022-6h-1440x721.zarr"
+    "gs://weatherbench2/datasets/era5/1959-2022-6h-1440x721.zarr",
+    # Public bucket: without anonymous access gcsfs first looks for Google
+    # credentials, which can hang for minutes on machines outside GCP.
+    storage_options={"token": "anon"},
 )
 
 

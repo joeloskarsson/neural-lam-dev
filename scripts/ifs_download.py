@@ -21,7 +21,10 @@ from dask.diagnostics import ProgressBar
 
 # IFS from WeatherBench2
 ifs = xr.open_zarr(
-    "gs://weatherbench2/datasets/hres/2016-2022-0012-1440x721.zarr"
+    "gs://weatherbench2/datasets/hres/2016-2022-0012-1440x721.zarr",
+    # Public bucket: without anonymous access gcsfs first looks for Google
+    # credentials, which can hang for minutes on machines outside GCP.
+    storage_options={"token": "anon"},
 )
 
 
